@@ -1,0 +1,134 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "{{ANTHROPIC_AUTH_TOKEN}}",
+    "ANTHROPIC_BASE_URL": "{{ANTHROPIC_BASE_URL}}",
+    "EDITOR": "code --wait",
+    "CLAUDE_HOOKS_LOG_DIR": "{{CLAUDE_HOME}}/logs",
+    "CLAUDE_DISABLED_HOOKS": ""
+  },
+  "theme": "dark",
+  "skipDangerousModePermissionPrompt": true,
+  "statusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/statusline.ps1",
+    "padding": 0,
+    "refreshInterval": 10
+  },
+  "permissions": {
+    "deny": [
+      "PowerShell(Format-Volume*)",
+      "PowerShell(Stop-Computer*)",
+      "PowerShell(Restart-Computer*)",
+      "PowerShell(Clear-RecycleBin*)",
+      "PowerShell(Remove-PSDrive*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/block-dangerous.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/protect-secrets.ps1"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/auto-format.ps1"
+          },
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/typecheck.ps1",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/command-log.ps1"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/session-start-context.ps1"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/smart-context.ps1",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/notify.ps1"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/stop-sound.ps1"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/precompact-backup.ps1"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/subagent-stop.ps1"
+          }
+        ]
+      }
+    ]
+  }
+}

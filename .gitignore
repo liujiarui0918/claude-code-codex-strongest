@@ -1,0 +1,46 @@
+# Claude Code runtime state (per-machine, never publish)
+backups/
+cache/
+file-history/
+ide/
+logs/
+plugins/
+projects/
+session-env/
+sessions/
+shell-snapshots/
+tasks/
+telemetry/
+history.jsonl
+.last-cleanup
+
+# Real settings (only the template is in the repo)
+settings.json
+settings.json.*-bak
+settings.json.bak.*
+.claude.json
+.claude.json.backup.*
+
+# Memory (user-specific learning store)
+memory/
+
+# Plans / scratch
+plans/
+
+# Setup notes (kept locally only)
+SETUP_PLAN.md
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor junk
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs from installer test runs
+install-*.log
