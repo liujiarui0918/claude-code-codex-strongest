@@ -4,9 +4,11 @@
 #
 # Installs:  Homebrew, VS Code, Claude Code CLI, official VS Code extension,
 #            git, Node.js, PowerShell 7, uv (for Python MCP servers)
-# Deploys:   ~/.claude/ — 33 skills / 22 agents / 25 commands / 11 hooks / 8 MCPs
+# Deploys:   ~/.claude/ — 33 skills / 22 agents / 25 commands / 12 hooks
+#            + 8 MCP servers into ~/.claude.json
 #
 # Usage:     ./install-macos.sh
+#            ./install-macos.sh --reset
 #            ./install-macos.sh --token sk-ant-xxx --url https://relay.example.com
 #            ./install-macos.sh --non-interactive --token sk-ant-xxx
 # ============================================================================
@@ -20,9 +22,11 @@ set -euo pipefail
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 API_TOKEN=""
 BASE_URL=""
+TIMEZONE="Asia/Shanghai"
 NON_INTERACTIVE=0
 SKIP_PREREQS=0
 FORCE=0
+RESET=0
 DRY_RUN=0
 
 # Resolve repo root: this script is in <repo>/install/, go up one.
@@ -52,7 +56,7 @@ show_welcome() {
     printf "${C_MAGENTA}|                                                            |${C_RESET}\n"
     printf "${C_MAGENTA}|   Installs: VS Code + Claude Code CLI + extension          |${C_RESET}\n"
     printf "${C_MAGENTA}|   Deploys:  33 skills / 22 agents / 25 commands /          |${C_RESET}\n"
-    printf "${C_MAGENTA}|             11 hooks / 8 MCP servers                       |${C_RESET}\n"
+    printf "${C_MAGENTA}|             12 hooks / 8 MCP servers                       |${C_RESET}\n"
     printf "${C_MAGENTA}+------------------------------------------------------------+${C_RESET}\n\n"
 }
 
@@ -74,6 +78,19 @@ ensure_brew_on_path() {
     fi
 }
 
+# Ensure the `code` CLI is callable. VS Code casks don't always add it to PATH;
+# symlink it from the app bundle if needed.
+ensure_code_on_path() {
+    if command_exists code; then return 0; fi
+    local bin="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+    if [ -x "$bin" ]; then
+        local dest="/usr/local/bin"
+        [ -d /opt/homebrew/bin ] && dest="/opt/homebrew/bin"
+        ln -sf "$bin" "$dest/code" 2>/dev/null || sudo ln -sf "$bin" "$dest/code" 2>/dev/null || true
+    fi
+    command_exists code
+}
+
 # ----------------------------------------------------------------------------
 # Argument parsing
 # ----------------------------------------------------------------------------
@@ -81,7 +98,9 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --token)            API_TOKEN="$2"; shift 2 ;;
         --url)              BASE_URL="$2";  shift 2 ;;
+        --timezone)         TIMEZONE="$2";  shift 2 ;;
         --claude-home)      CLAUDE_HOME="$2"; shift 2 ;;
+        --reset)            RESET=1;           shift ;;
         --non-interactive)  NON_INTERACTIVE=1; shift ;;
         --skip-prereqs)     SKIP_PREREQS=1;    shift ;;
         --force)            FORCE=1;           shift ;;
@@ -93,7 +112,9 @@ Usage: $0 [options]
 Options:
   --token TOKEN           Anthropic API key (sk-ant-... or relay token)
   --url URL               Base URL (empty = official api.anthropic.com)
+  --timezone TZ           IANA timezone for the 'time' MCP (default Asia/Shanghai)
   --claude-home PATH      Override ~/.claude install location
+  --reset                 Clean reinstall: back up + remove old config, re-login, reinstall extension
   --non-interactive       Skip prompts (--token required)
   --skip-prereqs          Skip installing brew / VS Code / Node / etc.
   --force                 Overwrite existing ~/.claude without prompting
@@ -109,6 +130,45 @@ EOF
 done
 
 # ----------------------------------------------------------------------------
+# Reset (clean reinstall)
+# ----------------------------------------------------------------------------
+reset_environment() {
+    log_step "RESET MODE: backing up and clearing existing Claude Code state"
+    local ts; ts=$(date +%Y%m%d-%H%M%S)
+
+    if [ $DRY_RUN -eq 1 ]; then
+        log_info "[dry-run] would back up + remove $CLAUDE_HOME and ~/.claude.json, logout, reinstall extension"
+        printf "\n"; return 0
+    fi
+
+    local target
+    for target in "$CLAUDE_HOME" "$HOME/.claude.json"; do
+        if [ -e "$target" ]; then
+            if mv "$target" "$target.reset-bak.$ts" 2>/dev/null; then
+                log_ok "Backed up + removed: $target"
+            else
+                log_warn "Could not move $target"
+            fi
+        fi
+    done
+
+    if command_exists claude; then
+        claude logout >/dev/null 2>&1 || true
+        log_ok "Logged out of Claude Code (claude logout)"
+    fi
+    if command_exists code; then
+        code --uninstall-extension anthropic.claude-code >/dev/null 2>&1 || true
+        log_ok "Removed VS Code extension (will reinstall)"
+    fi
+    local gs="$HOME/Library/Application Support/Code/User/globalStorage/anthropic.claude-code"
+    if [ -d "$gs" ]; then
+        mv "$gs" "$gs.reset-bak.$ts" 2>/dev/null || true
+        log_ok "Cleared VS Code extension globalStorage"
+    fi
+    printf "\n"
+}
+
+# ----------------------------------------------------------------------------
 # Prerequisites
 # ----------------------------------------------------------------------------
 install_homebrew() {
@@ -118,7 +178,7 @@ install_homebrew() {
     fi
     log_step "Installing Homebrew (will prompt for sudo password)"
     if [ $DRY_RUN -eq 1 ]; then
-        log_info "[dry-run] would run: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        log_info "[dry-run] would install Homebrew"
         return 0
     fi
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -153,7 +213,7 @@ install_uv() {
     fi
     log_step "Installing uv (Python package manager)"
     if [ $DRY_RUN -eq 1 ]; then
-        log_info "[dry-run] would run: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        log_info "[dry-run] would install uv"
         return 0
     fi
     curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -191,9 +251,10 @@ install_claude_cli() {
 }
 
 install_vscode_ext() {
+    ensure_code_on_path || true
     if ! command_exists code; then
         log_warn "'code' CLI not on PATH; skipping extension install."
-        log_info "After VS Code is installed, run: code --install-extension anthropic.claude-code"
+        log_info "In VS Code run: Cmd+Shift+P -> 'Shell Command: Install code command in PATH', then re-run."
         return 0
     fi
     log_step "Installing VS Code extension: anthropic.claude-code"
@@ -209,9 +270,8 @@ install_vscode_ext() {
 }
 
 install_prerequisites() {
-    log_step "Phase 1/4: Installing prerequisites"
+    log_step "Phase 1/5: Installing prerequisites"
 
-    # Xcode CLT (git etc.) — Homebrew install will trigger this if missing.
     install_homebrew
 
     brew_install 'VS Code'      --cask visual-studio-code
@@ -232,9 +292,8 @@ install_prerequisites() {
 # User input
 # ----------------------------------------------------------------------------
 prompt_creds_osascript() {
-    # Try native macOS dialog via osascript.
     local token url
-    token=$(osascript <<EOF 2>/dev/null
+    token=$(osascript <<'EOF' 2>/dev/null
 try
     set theResult to display dialog "Anthropic API Key (sk-ant-... or relay token):" default answer "" with hidden answer with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
     return text returned of theResult
@@ -247,7 +306,7 @@ EOF
         return 1
     fi
 
-    url=$(osascript <<EOF 2>/dev/null
+    url=$(osascript <<'EOF' 2>/dev/null
 try
     set theResult to display dialog "Anthropic Base URL (leave empty for official api.anthropic.com):" default answer "" with title "Claude Code Strongest" buttons {"Cancel", "Install"} default button "Install"
     return text returned of theResult
@@ -295,7 +354,6 @@ get_creds() {
         log_ok "Using credentials from command line"
         return 0
     fi
-    # Try osascript dialog
     if command_exists osascript && prompt_creds_osascript; then
         log_ok "Credentials captured via dialog"
         return 0
@@ -325,7 +383,7 @@ backup_existing() {
 }
 
 deploy_repo() {
-    log_step "Phase 2/4: Deploying files to $CLAUDE_HOME"
+    log_step "Phase 2/5: Deploying files to $CLAUDE_HOME"
 
     if [ -e "$CLAUDE_HOME" ]; then
         if [ $FORCE -eq 0 ] && [ $NON_INTERACTIVE -eq 0 ]; then
@@ -349,6 +407,8 @@ deploy_repo() {
     rsync -a \
         --exclude 'install/' \
         --exclude 'settings.template.json' \
+        --exclude 'mcp-servers.windows.json' \
+        --exclude 'mcp-servers.macos.json' \
         --exclude 'LICENSE' \
         --exclude 'README.md' \
         --exclude '.gitignore' \
@@ -361,7 +421,7 @@ deploy_repo() {
 }
 
 render_settings() {
-    log_step "Phase 3/4: Rendering settings.json from template"
+    log_step "Phase 3/5: Rendering settings.json from template"
     local tpl="$REPO_ROOT/settings.template.json"
     local out="$CLAUDE_HOME/settings.json"
 
@@ -369,9 +429,6 @@ render_settings() {
         log_err "Template not found: $tpl"
         exit 1
     fi
-
-    local claude_home_slashes; claude_home_slashes="$CLAUDE_HOME"
-    # On macOS $CLAUDE_HOME uses /. No backslash conversion needed.
 
     if [ $DRY_RUN -eq 1 ]; then
         log_info "[dry-run] would render $tpl -> $out"
@@ -388,9 +445,8 @@ render_settings() {
     # Bash 3.2-safe substitution.
     content="${content//\{\{ANTHROPIC_AUTH_TOKEN\}\}/$API_TOKEN}"
     content="${content//\{\{ANTHROPIC_BASE_URL\}\}/$BASE_URL}"
-    content="${content//\{\{CLAUDE_HOME\}\}/$claude_home_slashes}"
+    content="${content//\{\{CLAUDE_HOME\}\}/$CLAUDE_HOME}"
 
-    # Verify no placeholders left.
     if echo "$content" | grep -qE '\{\{[A-Z_]+\}\}'; then
         log_err "Unfilled placeholders remain in settings.json"
         echo "$content" | grep -oE '\{\{[A-Z_]+\}\}' | sort -u
@@ -401,11 +457,52 @@ render_settings() {
     log_ok "Wrote $out"
 }
 
+deploy_mcp() {
+    log_step "Phase 4/5: Configuring MCP servers in ~/.claude.json"
+    local tpl="$REPO_ROOT/mcp-servers.macos.json"
+    local cfg="$HOME/.claude.json"
+
+    if [ ! -f "$tpl" ]; then
+        log_warn "MCP template not found ($tpl); skipping MCP setup."
+        return 0
+    fi
+    if [ $DRY_RUN -eq 1 ]; then
+        log_info "[dry-run] would merge 8 MCP servers into $cfg"
+        return 0
+    fi
+
+    # Back up existing global config.
+    if [ -f "$cfg" ]; then
+        cp "$cfg" "$cfg.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+    fi
+
+    if ! command_exists node; then
+        log_warn "node not found; cannot configure MCP. Re-run installer after Node installs."
+        return 0
+    fi
+
+    # Merge with Node (always installed by this script). Writes UTF-8 without BOM.
+    if TPL="$tpl" CFG="$cfg" TZVAL="$TIMEZONE" node -e '
+        const fs = require("fs");
+        const tplRaw = fs.readFileSync(process.env.TPL, "utf8").replace(/\{\{TIMEZONE\}\}/g, process.env.TZVAL);
+        const mcp = JSON.parse(tplRaw);
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(process.env.CFG, "utf8")); } catch (e) { cfg = {}; }
+        cfg.mcpServers = mcp;
+        if (cfg.hasCompletedOnboarding === undefined) cfg.hasCompletedOnboarding = true;
+        fs.writeFileSync(process.env.CFG, JSON.stringify(cfg, null, 2));
+    '; then
+        log_ok "Configured 8 MCP servers in $cfg"
+    else
+        log_warn "MCP merge via node failed; you can run /mcp-status later to diagnose."
+    fi
+}
+
 # ----------------------------------------------------------------------------
 # Verify
 # ----------------------------------------------------------------------------
 verify_install() {
-    log_step "Phase 4/4: Verifying install"
+    log_step "Phase 5/5: Verifying install"
 
     local ok=0 fail=0
     check() {
@@ -421,13 +518,14 @@ verify_install() {
     }
 
     check "settings.json exists"      "[ -f '$CLAUDE_HOME/settings.json' ]"
-    check "settings.json parses"      "python3 -c 'import json,sys; json.load(open(\"$CLAUDE_HOME/settings.json\"))' 2>&1 | grep -qv Error"
+    check "settings.json parses"      "node -e 'JSON.parse(require(\"fs\").readFileSync(\"$CLAUDE_HOME/settings.json\",\"utf8\"))'"
     check "CLAUDE.md exists"          "[ -f '$CLAUDE_HOME/CLAUDE.md' ]"
     check "docs/ has >=4 files"       "[ \$(ls -1 '$CLAUDE_HOME/docs' 2>/dev/null | wc -l | tr -d ' ') -ge 4 ]"
     check "skills/ has >=30 entries"  "[ \$(ls -1 '$CLAUDE_HOME/skills' 2>/dev/null | wc -l | tr -d ' ') -ge 30 ]"
     check "agents/ has >=20 entries"  "[ \$(ls -1 '$CLAUDE_HOME/agents'/*.md 2>/dev/null | wc -l | tr -d ' ') -ge 20 ]"
     check "commands/ has >=20"        "[ \$(ls -1 '$CLAUDE_HOME/commands'/*.md 2>/dev/null | wc -l | tr -d ' ') -ge 20 ]"
-    check "hooks/ has >=11 .ps1"      "[ \$(ls -1 '$CLAUDE_HOME/hooks'/*.ps1 2>/dev/null | wc -l | tr -d ' ') -ge 11 ]"
+    check "hooks/ has >=12 .ps1"      "[ \$(ls -1 '$CLAUDE_HOME/hooks'/*.ps1 2>/dev/null | wc -l | tr -d ' ') -ge 12 ]"
+    check "~/.claude.json 8 MCPs"     "node -e 'const j=JSON.parse(require(\"fs\").readFileSync(process.env.HOME+\"/.claude.json\",\"utf8\"));process.exit(Object.keys(j.mcpServers||{}).length>=8?0:1)'"
 
     if [ $fail -gt 0 ]; then
         log_err "Verification: $fail of $((ok+fail)) checks failed"
@@ -441,7 +539,8 @@ show_success() {
     printf "${C_GREEN}${C_BOLD}+============================================================+${C_RESET}\n"
     printf "${C_GREEN}${C_BOLD}|             INSTALLATION COMPLETE!                         |${C_RESET}\n"
     printf "${C_GREEN}${C_BOLD}+============================================================+${C_RESET}\n\n"
-    printf "  Claude Code config installed at: ${C_BOLD}%s${C_RESET}\n\n" "$CLAUDE_HOME"
+    printf "  Claude Code config installed at: ${C_BOLD}%s${C_RESET}\n" "$CLAUDE_HOME"
+    printf "  8 MCP servers configured in ~/.claude.json\n\n"
     printf "  ${C_YELLOW}Next steps:${C_RESET}\n"
     printf "    1. Open VS Code (or run: ${C_BOLD}code .${C_RESET})\n"
     printf "    2. Press ${C_BOLD}Cmd+Shift+P${C_RESET} -> \"Claude Code: Open Chat\"\n"
@@ -459,10 +558,13 @@ main() {
 
     log_info "Repo root: $REPO_ROOT"
     log_info "Install target: $CLAUDE_HOME"
-    if [ $DRY_RUN -eq 1 ]; then
-        log_warn "DRY-RUN MODE — no actual changes will be made"
-    fi
+    if [ $RESET -eq 1 ]; then log_info "Mode: RESET (clean reinstall)"; fi
+    if [ $DRY_RUN -eq 1 ]; then log_warn "DRY-RUN MODE — no actual changes will be made"; fi
     printf "\n"
+
+    if [ $RESET -eq 1 ]; then
+        reset_environment
+    fi
 
     if [ $SKIP_PREREQS -eq 0 ]; then
         install_prerequisites
@@ -475,6 +577,7 @@ main() {
 
     deploy_repo
     render_settings
+    deploy_mcp
 
     if [ $DRY_RUN -eq 0 ]; then
         verify_install

@@ -1,0 +1,19 @@
+# Normalize text files to LF in the repository by default.
+* text=auto
+
+# Windows scripts: keep CRLF in the working tree (harmless either way, native on Win).
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# Unix scripts MUST be LF — CRLF breaks the shebang / bash parsing on macOS/Linux.
+*.sh        text eol=lf
+*.command   text eol=lf
+
+# JSON / Markdown: LF is fine everywhere.
+*.json  text eol=lf
+*.md    text eol=lf
+
+# Treat known-binary just in case (none currently, future-proofing).
+*.png   binary
+*.jpg   binary
+*.zip   binary

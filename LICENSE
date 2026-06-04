@@ -33,5 +33,6 @@ sources include:
 - [wshobson/agents](https://github.com/wshobson/agents) — MIT
 - [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) — MIT
 - [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) — Anthropic
+- [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) — MIT (adapted: the `block-no-verify` and linter/formatter `config-protection` hook ideas, reimplemented in PowerShell)
 
 See README.md for the full attribution table.

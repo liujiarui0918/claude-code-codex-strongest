@@ -42,6 +42,15 @@
             "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/protect-secrets.ps1"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File {{CLAUDE_HOME}}/hooks/protect-linter-configs.ps1"
+          }
+        ]
       }
     ],
     "PostToolUse": [

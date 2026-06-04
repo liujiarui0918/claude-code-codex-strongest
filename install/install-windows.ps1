@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     Installs VS Code, Claude Code CLI, official VS Code extension, and deploys
-    the full ~/.claude/ configuration (skills, agents, commands, hooks, MCPs).
+    the full ~/.claude/ configuration (skills, agents, commands, hooks) plus the
+    8 MCP servers into ~/.claude.json.
 
 .PARAMETER ClaudeHome
     Override the default ~/.claude install location.
@@ -15,6 +16,14 @@
 
 .PARAMETER BaseUrl
     Anthropic API base URL. Empty = official api.anthropic.com.
+
+.PARAMETER Reset
+    Clean reinstall: back up and remove the existing ~/.claude and ~/.claude.json,
+    log out of Claude Code, and uninstall+reinstall the VS Code extension. Use this
+    when a machine already has VS Code / Claude Code with old or broken config.
+
+.PARAMETER Timezone
+    IANA timezone for the 'time' MCP server. Default: Asia/Shanghai.
 
 .PARAMETER Force
     Overwrite existing ~/.claude without prompting (backs up first).
@@ -29,13 +38,18 @@
     powershell -ExecutionPolicy Bypass -File install-windows.ps1
 
 .EXAMPLE
-    .\install-windows.ps1 -ApiToken 'sk-ant-xxx' -NonInteractive
+    .\install-windows.ps1 -Reset
+
+.EXAMPLE
+    .\install-windows.ps1 -ApiToken 'sk-ant-xxx' -NonInteractive -Force
 #>
 [CmdletBinding()]
 param(
     [string]$ClaudeHome   = '',
     [string]$ApiToken     = '',
     [string]$BaseUrl      = '',
+    [switch]$Reset,
+    [string]$Timezone     = 'Asia/Shanghai',
     [switch]$Force,
     [switch]$NonInteractive,
     [switch]$SkipPrereqs,
@@ -68,6 +82,15 @@ function Refresh-Path {
     if ($user) { $env:Path = "$machine;$user" } else { $env:Path = $machine }
 }
 
+# Write UTF-8 WITHOUT BOM. Claude Code parses ~/.claude.json and settings.json with
+# Node's JSON.parse, which throws on a leading BOM. PS 5.1's Set-Content -Encoding UTF8
+# emits a BOM, so we must use the .NET writer with UTF8Encoding($false).
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
 function Get-RepoRoot {
     # install-windows.ps1 lives in <repo>/install/, so go up one level.
     $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -83,8 +106,47 @@ function Show-Welcome {
     Write-Host '|                                                            |' -ForegroundColor Magenta
     Write-Host '|   Installs: VS Code + Claude Code CLI + extension          |' -ForegroundColor Magenta
     Write-Host '|   Deploys:  33 skills / 22 agents / 25 commands /          |' -ForegroundColor Magenta
-    Write-Host '|             11 hooks / 8 MCP servers                       |' -ForegroundColor Magenta
+    Write-Host '|             12 hooks / 8 MCP servers                       |' -ForegroundColor Magenta
     Write-Host $line -ForegroundColor Magenta
+    Write-Host ''
+}
+
+# ============================================================================
+# Reset (clean reinstall)
+# ============================================================================
+function Reset-Environment {
+    param([string]$ClaudeHome)
+    Write-Step 'RESET MODE: backing up and clearing existing Claude Code state'
+    $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+    foreach ($target in @($ClaudeHome, (Join-Path $env:USERPROFILE '.claude.json'))) {
+        if (Test-Path $target) {
+            $bak = "$target.reset-bak.$ts"
+            try {
+                Move-Item -LiteralPath $target -Destination $bak -Force
+                Write-Ok "Backed up + removed: $target"
+            } catch {
+                Write-Warn "Could not move $target : $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # Log out (clears any OAuth/keyring login) if the CLI is present.
+    if (Test-Command 'claude') {
+        try { & claude logout 2>&1 | Out-Null; Write-Ok 'Logged out of Claude Code (claude logout)' } catch {}
+    }
+
+    # Uninstall the VS Code extension so prereqs reinstalls it clean.
+    if (Test-Command 'code') {
+        try { & code --uninstall-extension anthropic.claude-code 2>&1 | Out-Null; Write-Ok 'Removed VS Code extension (will reinstall)' } catch {}
+    }
+
+    # Clear the extension's globalStorage (settings/cache), backed up.
+    $gs = Join-Path $env:APPDATA 'Code\User\globalStorage\anthropic.claude-code'
+    if (Test-Path $gs) {
+        try { Move-Item -LiteralPath $gs -Destination "$gs.reset-bak.$ts" -Force; Write-Ok 'Cleared VS Code extension globalStorage' } catch {}
+    }
+
     Write-Host ''
 }
 
@@ -131,7 +193,7 @@ function Invoke-Winget {
 }
 
 function Install-Prerequisites {
-    Write-Step 'Phase 1/4: Installing prerequisites via winget'
+    Write-Step 'Phase 1/5: Installing prerequisites via winget'
     if (-not (Test-Winget)) {
         throw 'winget unavailable; cannot proceed in unattended mode.'
     }
@@ -322,7 +384,7 @@ function Backup-Existing {
 
 function Deploy-Repo {
     param([string]$RepoRoot, [string]$ClaudeHome)
-    Write-Step "Phase 2/4: Deploying files to $ClaudeHome"
+    Write-Step "Phase 2/5: Deploying files to $ClaudeHome"
 
     if (Test-Path $ClaudeHome) {
         if (-not $Force -and -not $NonInteractive) {
@@ -336,9 +398,10 @@ function Deploy-Repo {
 
     New-Item -ItemType Directory -Path $ClaudeHome -Force | Out-Null
 
-    # robocopy: copy everything except install/ and the template (we render it separately).
+    # robocopy: copy everything except install/ and the repo-only files (templates rendered separately).
     $excludeDirs  = @('install')
-    $excludeFiles = @('settings.template.json', 'LICENSE', 'README.md', '.gitignore', '.gitattributes', '.git')
+    $excludeFiles = @('settings.template.json', 'mcp-servers.windows.json', 'mcp-servers.macos.json',
+                      'LICENSE', 'README.md', '.gitignore', '.gitattributes', '.git')
     $rcArgs = @($RepoRoot, $ClaudeHome, '/E', '/XJ',
                 '/XD', $excludeDirs[0],
                 '/XF') + $excludeFiles + @('/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS', '/NP')
@@ -356,7 +419,7 @@ function Render-Settings {
         [hashtable]$Values,
         [bool]$UrlEmpty
     )
-    Write-Step 'Phase 3/4: Rendering settings.json from template'
+    Write-Step 'Phase 3/5: Rendering settings.json from template'
     if (-not (Test-Path $TemplatePath)) {
         throw "Template not found: $TemplatePath"
     }
@@ -375,8 +438,52 @@ function Render-Settings {
         throw "Unfilled placeholders remain in settings.json: $($Matches[0])"
     }
 
-    Set-Content -LiteralPath $OutPath -Value $content -Encoding UTF8 -NoNewline
+    Write-Utf8NoBom -Path $OutPath -Content $content
     Write-Ok "Wrote $OutPath"
+}
+
+function Deploy-MCP {
+    param([string]$RepoRoot, [string]$Timezone)
+    Write-Step 'Phase 4/5: Configuring MCP servers in ~/.claude.json'
+
+    $tpl = Join-Path $RepoRoot 'mcp-servers.windows.json'
+    if (-not (Test-Path $tpl)) {
+        Write-Warn "MCP template not found ($tpl); skipping MCP setup."
+        return
+    }
+    $raw = (Get-Content -LiteralPath $tpl -Raw -Encoding UTF8) -replace '\{\{TIMEZONE\}\}', $Timezone
+    try {
+        $mcp = $raw | ConvertFrom-Json
+    } catch {
+        Write-Warn "MCP template invalid JSON; skipping. $($_.Exception.Message)"
+        return
+    }
+
+    $cfgPath = Join-Path $env:USERPROFILE '.claude.json'
+    $cfg = $null
+    if (Test-Path $cfgPath) {
+        # Back up the user's global config before touching it.
+        $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
+        try { Copy-Item -LiteralPath $cfgPath -Destination "$cfgPath.bak.$ts" -Force } catch {}
+        try {
+            $cfg = Get-Content -LiteralPath $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        } catch {
+            Write-Warn '~/.claude.json exists but is not valid JSON; creating a fresh one (old backed up).'
+            $cfg = $null
+        }
+    }
+    if (-not $cfg) { $cfg = [pscustomobject]@{} }
+
+    $cfg | Add-Member -NotePropertyName mcpServers -NotePropertyValue $mcp -Force
+    # Avoid re-triggering the onboarding wizard for reset/fresh users.
+    if (-not ($cfg.PSObject.Properties.Name -contains 'hasCompletedOnboarding')) {
+        $cfg | Add-Member -NotePropertyName hasCompletedOnboarding -NotePropertyValue $true -Force
+    }
+
+    $json = $cfg | ConvertTo-Json -Depth 100
+    Write-Utf8NoBom -Path $cfgPath -Content $json
+    $count = @($mcp.PSObject.Properties).Count
+    Write-Ok "Configured $count MCP servers in $cfgPath"
 }
 
 # ============================================================================
@@ -384,7 +491,7 @@ function Render-Settings {
 # ============================================================================
 function Verify-Install {
     param([string]$ClaudeHome)
-    Write-Step 'Phase 4/4: Verifying install'
+    Write-Step 'Phase 5/5: Verifying install'
     $checks = @(
         @{ Name = 'settings.json exists';      Test = { Test-Path (Join-Path $ClaudeHome 'settings.json') } },
         @{ Name = 'settings.json parses';      Test = { try { Get-Content (Join-Path $ClaudeHome 'settings.json') -Raw | ConvertFrom-Json | Out-Null; $true } catch { $false } } },
@@ -393,7 +500,8 @@ function Verify-Install {
         @{ Name = 'skills/ has >= 30';         Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'skills') -Directory -ErrorAction SilentlyContinue).Count -ge 30 } },
         @{ Name = 'agents/ has >= 20';         Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'agents') -Filter *.md -File -ErrorAction SilentlyContinue).Count -ge 20 } },
         @{ Name = 'commands/ has >= 20';       Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'commands') -Filter *.md -File -ErrorAction SilentlyContinue).Count -ge 20 } },
-        @{ Name = 'hooks/ has >= 11 .ps1';     Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'hooks') -Filter *.ps1 -File -ErrorAction SilentlyContinue).Count -ge 11 } }
+        @{ Name = 'hooks/ has >= 12 .ps1';     Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'hooks') -Filter *.ps1 -File -ErrorAction SilentlyContinue).Count -ge 12 } },
+        @{ Name = '~/.claude.json 8 MCPs';     Test = { try { $j = Get-Content (Join-Path $env:USERPROFILE '.claude.json') -Raw -Encoding UTF8 | ConvertFrom-Json; @($j.mcpServers.PSObject.Properties).Count -ge 8 } catch { $false } } }
     )
     $allOk = $true
     foreach ($c in $checks) {
@@ -411,6 +519,7 @@ function Show-Success {
     Write-Host '+============================================================+' -ForegroundColor Green
     Write-Host ''
     Write-Host "  Claude Code config installed at: $ClaudeHome" -ForegroundColor White
+    Write-Host '  8 MCP servers configured in ~/.claude.json' -ForegroundColor White
     Write-Host ''
     Write-Host '  Next steps:' -ForegroundColor Yellow
     Write-Host '    1. Open VS Code (or run: code .)' -ForegroundColor White
@@ -437,7 +546,12 @@ try {
         $ClaudeHome = Join-Path $env:USERPROFILE '.claude'
     }
     Write-Info "Install target: $ClaudeHome"
+    if ($Reset) { Write-Info 'Mode: RESET (clean reinstall)' }
     Write-Host ''
+
+    if ($Reset) {
+        Reset-Environment -ClaudeHome $ClaudeHome
+    }
 
     if (-not $SkipPrereqs) {
         Install-Prerequisites
@@ -459,6 +573,8 @@ try {
         CLAUDE_HOME          = $ClaudeHome.Replace('\', '/')
     }
 
+    Deploy-MCP -RepoRoot $repoRoot -Timezone $Timezone
+
     Verify-Install -ClaudeHome $ClaudeHome
 
     Show-Success -ClaudeHome $ClaudeHome
@@ -472,6 +588,7 @@ try {
     Write-Host '    - Run as Administrator if winget needs elevation' -ForegroundColor White
     Write-Host '    - Check VPN if downloads time out' -ForegroundColor White
     Write-Host '    - Re-run with -SkipPrereqs if tools are already installed' -ForegroundColor White
+    Write-Host '    - Try a clean slate: re-run with -Reset' -ForegroundColor White
     Write-Host '    - See: https://github.com/liujiarui0918/claude-code-strongest/issues' -ForegroundColor White
     exit 1
 }

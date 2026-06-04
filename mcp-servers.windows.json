@@ -1,0 +1,46 @@
+{
+  "sequential-thinking": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "env": {}
+  },
+  "context7": {
+    "type": "http",
+    "url": "https://mcp.context7.com/mcp"
+  },
+  "deepwiki": {
+    "type": "http",
+    "url": "https://mcp.deepwiki.com/mcp"
+  },
+  "playwright": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": ["/c", "npx", "-y", "@playwright/mcp@latest", "--headless"],
+    "env": {}
+  },
+  "memory": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-memory"],
+    "env": {}
+  },
+  "fetch": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": ["/c", "uvx", "mcp-server-fetch"],
+    "env": {}
+  },
+  "time": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": ["/c", "uvx", "mcp-server-time", "--local-timezone", "{{TIMEZONE}}"],
+    "env": {}
+  },
+  "git-mcp": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": ["/c", "uvx", "mcp-server-git"],
+    "env": {}
+  }
+}

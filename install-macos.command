@@ -1,16 +1,36 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Claude Code Strongest - Double-click launcher for macOS
+# Claude Code Strongest - One-Click Installer (macOS)
 #
-# Just double-click this file in Finder (Terminal will open).
-# If macOS blocks it: System Settings > Privacy & Security > "Open Anyway".
+# Double-click this file in Finder. If macOS blocks it:
+#   right-click > Open, or System Settings > Privacy & Security > "Open Anyway".
 # ============================================================================
 set -e
+echo "============================================================"
+echo "   Claude Code Strongest - One-Click Installer (macOS)"
+echo "============================================================"
+echo
+echo "This downloads the latest setup and installs everything:"
+echo "  VS Code + Claude Code + 33 skills / 22 agents / 8 MCPs"
+echo
+echo "A box will pop up asking for your API key. That's normal."
+echo
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TMP="$(mktemp -d)"
+URL="https://github.com/liujiarui0918/claude-code-strongest/archive/refs/heads/main.tar.gz"
 
-echo ""
-echo "Launching Claude Code Strongest installer..."
-echo ""
+echo "Downloading..."
+if ! curl -fsSL "$URL" -o "$TMP/r.tar.gz"; then
+    echo "Download failed. If you are in mainland China, turn on a VPN and try again."
+    exit 1
+fi
 
-exec bash "$SCRIPT_DIR/install/install-macos.sh" "$@"
+echo "Extracting..."
+tar -xzf "$TMP/r.tar.gz" -C "$TMP"
+DIR="$(find "$TMP" -maxdepth 1 -type d -name 'claude-code-strongest-*' | head -1)"
+[ -n "$DIR" ] || { echo "Extract failed."; exit 1; }
+
+bash "$DIR/install/install-macos.sh" "$@"
+EC=$?
+rm -rf "$TMP"
+exit $EC
