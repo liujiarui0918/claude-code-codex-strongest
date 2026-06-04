@@ -28,8 +28,9 @@
 
 1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest)，下载 **`install-windows.bat`**
 2. **双击它**（若 SmartScreen 拦截：点"更多信息"→"仍要运行"）
-3. 弹窗里填 API key（必填）+ Base URL（可空 = 官方 Anthropic API）+ 模型名（可空）；**默认会一并装 cc-switch**（多供应商/多模型切换 GUI，兼容 OpenAI 格式中转站），不想要就取消勾选
-4. 装完打开 VS Code，`Ctrl+Shift+P` → 输入 `Claude Code: Open Chat`
+3. 等它自动装完（VS Code、Claude Code、cc-switch 等）——**不再有填 key 的弹窗**
+4. 装完会**自动打开 cc-switch**：点 Add Provider 填 API key + Base URL（选 Claude/Anthropic 预设，或你的中转站；gpt/OpenAI 格式中转站也行）→ 点 Enable
+5. 打开 VS Code，`Ctrl+Shift+P` → 输入 `Claude Code: Open Chat`
 
 > 前提：Win11 自带 winget；Win10 若没有，去 Microsoft Store 装一下 "App Installer"。
 
@@ -37,8 +38,9 @@
 
 1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest)，下载 **`install-macos.command`**
 2. **双击它**（若被拦：右键 → 打开，或"系统设置 → 隐私与安全性 → 仍要打开"）
-3. 弹出原生对话框依次填 API key、Base URL（可空）、模型名（可空），最后确认装 cc-switch（**默认装**，可点 Skip 跳过）
-4. 装完用 VS Code 或终端跑 `claude`
+3. 等它自动装完（含 cc-switch）——**不再有填 key 的弹窗**
+4. 装完会**自动打开 cc-switch**：Add Provider 填 API key + Base URL（Claude/Anthropic 预设，或你的中转站；gpt/OpenAI 也行）→ Enable
+5. 然后用 VS Code 或终端跑 `claude`
 
 #### 或者：一行命令（给会用终端的人）
 
@@ -86,7 +88,7 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 
 部署内容：
 - `~/.claude/`：skills / agents / commands / hooks / docs / output-styles 全套
-- `~/.claude/settings.json`：自动生成（API key、URL、hook 路径全填好，UTF-8 无 BOM）
+- `~/.claude/settings.json`：自动生成（hook 路径等填好，UTF-8 无 BOM；API key/URL 默认交给 cc-switch 配，除非用 `--token` 预填）
 - `~/.claude.json`：写入 8 个 MCP 服务器（Windows 用 `cmd /c` 包装，macOS 直连）
 - 已存在的配置自动备份到 `.bak.<时间戳>`
 
@@ -132,14 +134,17 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 
 ### 配置说明
 
-#### API key 怎么拿
-- **官方 Anthropic**：[console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) 生成 `sk-ant-...`
-- **国内中转站**（自行选择）：填中转商提供的 token + base URL
+#### API key 填在哪（没有弹窗了）
+装完 **cc-switch 会自动打开**——在里面点 Add Provider 填 API key + Base URL，再点 Enable：
+- **官方 Anthropic**：[console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) 生成 `sk-ant-...`，选 Anthropic 预设
+- **国内中转站**：填中转商给的 token + base URL（cc-switch 内置预设；gpt/OpenAI 格式中转站也支持）
+- **想跳过 cc-switch**：用 `--token`(+ `--url`)把凭证预写进 settings.json，或 `--no-cc-switch` 后自己配
 
 #### 模型名 / 用 GPT、DeepSeek 等别家模型
-- **模型名字段（可空）**：留空 = 用 Claude Code 默认模型（适合标准 Claude 中转站）。填了 V（如 `deepseek-chat`、`gpt-4o`）会把 `ANTHROPIC_MODEL` 和 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 都设成 V，这样**单模型中转站**的前台和后台调用都走同一个模型，不会因后台 Haiku 调用失败。
-- **大多数中转站本身就暴露 Anthropic 格式 `/v1/messages` 端点**（服务端帮你转 GPT/DeepSeek），这种情况**只要填对模型名即可，不需要任何本地翻译**。
-- **多供应商/多模型切换（默认安装）**：[cc-switch](https://github.com/farion1231/cc-switch)（Win: `winget install -e --id farion1231.CC-Switch`；Mac: `brew install --cask cc-switch`）默认会装上——一个 GUI，集中管理多套 Provider（含按 Opus/Sonnet/Haiku 分级映射）、一键切换、健康检查、用量统计，并自带 OpenAI↔Anthropic 代理，**兼容 gpt 等 OpenAI 格式中转站**。不想要就在弹窗取消勾选，或加 `--no-cc-switch` / `-NoCcSwitch`。
+- **在 cc-switch 里选模型（推荐）**：每个 Provider 可设模型名，还能按 Opus/Sonnet/Haiku 分级映射。
+- **或用 `--model` 标志**（脚本化安装）：会把 `ANTHROPIC_MODEL` 和 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 都设成它，这样**单模型中转站**（如只有 `deepseek-chat`）前台和后台调用都走它，不会因后台 Haiku 调用失败。
+- **大多数中转站本身就暴露 Anthropic 格式 `/v1/messages` 端点**（服务端帮你转 GPT/DeepSeek），这种情况**只要模型名对就行，不需要任何本地翻译**。
+- **多供应商/多模型切换（默认安装）**：[cc-switch](https://github.com/farion1231/cc-switch)（Win: `winget install -e --id farion1231.CC-Switch`；Mac: `brew install --cask cc-switch`）默认会装上并在装完自动打开——一个 GUI，集中管理多套 Provider（含按 Opus/Sonnet/Haiku 分级映射）、一键切换、健康检查、用量统计，并自带 OpenAI↔Anthropic 代理，**兼容 gpt 等 OpenAI 格式中转站**。不想要就加 `--no-cc-switch` / `-NoCcSwitch`。
 - **真要本地把原生 OpenAI 格式翻译成 Anthropic**（直连 `api.deepseek.com` 这类）：用 [claude-code-router](https://github.com/musistudio/claude-code-router)（transformer + 按任务路由）。本项目不自造翻译轮子。
 
 #### 进阶：克隆仓库后本地运行
@@ -234,7 +239,7 @@ This repo bundles the author's full `~/.claude/` configuration — skills, subag
 - **Windows:** download `install-windows.bat` → double-click (if SmartScreen warns: "More info" → "Run anyway")
 - **macOS:** download `install-macos.command` → double-click (if blocked: right-click → Open)
 
-A dialog asks for your API key (and optional base URL). That's it.
+No credential popup — cc-switch installs and opens at the end; add your provider (API key + Base URL) there, then Enable. That's it.
 
 **Or one line in a terminal:**
 
@@ -275,7 +280,7 @@ A normal re-install (without `-Reset`) is also safe: it auto-backs-up existing c
 
 ### Configuration flags
 
-- `--token` / `-ApiToken` (or GUI prompt): your Anthropic API key
+- `--token` / `-ApiToken`: optional — prewrite an API key for scripted installs (otherwise enter it in cc-switch, which opens at the end)
 - `--url` / `-BaseUrl`: optional relay URL (empty = official Anthropic API)
 - `--model` / `-Model`: optional model name; pins `ANTHROPIC_MODEL` + `ANTHROPIC_DEFAULT_HAIKU_MODEL` (e.g. `deepseek-chat`, `gpt-4o`). Empty = Claude Code defaults
 - `--no-cc-switch` / `-NoCcSwitch`: skip [cc-switch](https://github.com/farion1231/cc-switch) (installed by default — a GUI to switch between multiple API providers/models, incl. OpenAI-format relays)

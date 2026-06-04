@@ -11,9 +11,9 @@ echo "   Claude Code Strongest - One-Click Installer (macOS)"
 echo "============================================================"
 echo
 echo "This downloads the latest setup and installs everything:"
-echo "  VS Code + Claude Code + 33 skills / 22 agents / 8 MCPs"
+echo "  VS Code + Claude Code + cc-switch + 33 skills / 22 agents / 8 MCPs"
 echo
-echo "A box will pop up asking for your API key. That's normal."
+echo "No API-key box: when it finishes, cc-switch opens so you enter your key there."
 echo
 
 TMP="$(mktemp -d)"

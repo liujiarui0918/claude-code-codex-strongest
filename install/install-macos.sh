@@ -7,10 +7,10 @@
 # Deploys:   ~/.claude/ — 33 skills / 22 agents / 25 commands / 12 hooks
 #            + 8 MCP servers into ~/.claude.json
 #
-# Usage:     ./install-macos.sh
+# Usage:     ./install-macos.sh                   # no popup; opens cc-switch to enter your key
 #            ./install-macos.sh --reset
-#            ./install-macos.sh --token sk-ant-xxx --url https://relay.example.com
-#            ./install-macos.sh --non-interactive --token sk-ant-xxx
+#            ./install-macos.sh --no-cc-switch     # skip cc-switch
+#            ./install-macos.sh --token sk-ant-xxx --url https://relay.example.com   # scripted: prewrite creds
 # ============================================================================
 set -euo pipefail
 
@@ -114,15 +114,16 @@ while [ $# -gt 0 ]; do
 Usage: $0 [options]
 
 Options:
-  --token TOKEN           Anthropic API key (sk-ant-... or relay token)
-  --url URL               Base URL (empty = official api.anthropic.com)
+  --token TOKEN           Optional: prewrite an API key to settings.json (scripted installs).
+                          If omitted, configure your provider in cc-switch (opened at the end).
+  --url URL               Optional base URL for scripted installs (paired with --token)
   --model NAME            Pin model name; sets ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_HAIKU_MODEL
                           (e.g. deepseek-chat, gpt-4o). Empty = Claude Code defaults.
   --timezone TZ           IANA timezone for the 'time' MCP (default Asia/Shanghai)
   --claude-home PATH      Override ~/.claude install location
   --reset                 Clean reinstall: back up + remove old config, re-login, reinstall extension
   --no-cc-switch          Skip cc-switch (installed by default: multi-provider switcher GUI via Homebrew)
-  --non-interactive       Skip prompts (--token required)
+  --non-interactive       Do not auto-open cc-switch when done (for CI/scripted installs)
   --skip-prereqs          Skip installing brew / VS Code / Node / etc.
   --force                 Overwrite existing ~/.claude without prompting
   --dry-run               Print actions without doing anything
@@ -314,124 +315,21 @@ install_prerequisites() {
 }
 
 # ----------------------------------------------------------------------------
-# User input
+# cc-switch launcher (credential entry point -- no popup)
 # ----------------------------------------------------------------------------
-prompt_creds_osascript() {
-    local token url model ccbtn
-    token=$(osascript <<'EOF' 2>/dev/null
-try
-    set theResult to display dialog "Anthropic API Key (sk-ant-... or relay token):" default answer "" with hidden answer with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
-    return text returned of theResult
-on error
-    return "__CANCELLED__"
-end try
-EOF
-)
-    if [ -z "$token" ] || [ "$token" = "__CANCELLED__" ]; then
-        return 1
+# We do NOT prompt for an API key. Any --token/--url/--model passed on the CLI are
+# written to settings.json (scripted installs); otherwise the user enters their
+# provider in cc-switch, which we open at the end.
+open_cc_switch() {
+    if [ $DRY_RUN -eq 1 ]; then
+        log_info "[dry-run] would open cc-switch"
+        return 0
     fi
-
-    url=$(osascript <<'EOF' 2>/dev/null
-try
-    set theResult to display dialog "Anthropic Base URL (leave empty for official api.anthropic.com):" default answer "" with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
-    return text returned of theResult
-on error
-    return "__CANCELLED__"
-end try
-EOF
-)
-    if [ "$url" = "__CANCELLED__" ]; then
-        return 1
-    fi
-
-    model=$(osascript <<'EOF' 2>/dev/null
-try
-    set theResult to display dialog "Model name (optional). For a single-model relay enter e.g. deepseek-chat or gpt-4o. Leave empty for Claude Code defaults." default answer "" with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
-    return text returned of theResult
-on error
-    return "__CANCELLED__"
-end try
-EOF
-)
-    if [ "$model" = "__CANCELLED__" ]; then
-        return 1
-    fi
-
-    ccbtn=$(osascript <<'EOF' 2>/dev/null
-try
-    set theResult to display dialog "Install cc-switch? (recommended: a GUI to switch between API providers/models, incl. OpenAI-format relays)" with title "Claude Code Strongest" buttons {"Skip", "Install cc-switch"} default button "Install cc-switch"
-    return button returned of theResult
-on error
-    return "__CANCELLED__"
-end try
-EOF
-)
-    if [ "$ccbtn" = "__CANCELLED__" ]; then
-        return 1
-    fi
-
-    API_TOKEN="$token"
-    BASE_URL="$url"
-    MODEL="$model"
-    if [ "$ccbtn" = "Install cc-switch" ]; then
-        INSTALL_CC_SWITCH=1
+    # The Homebrew cask installs "CC Switch.app" into /Applications.
+    if open -a "CC Switch" 2>/dev/null || open -a "cc-switch" 2>/dev/null; then
+        log_ok "Opened cc-switch -- add your provider (API key + URL) there."
     else
-        INSTALL_CC_SWITCH=0
-    fi
-    return 0
-}
-
-prompt_creds_console() {
-    printf "\n"
-    log_step "Enter credentials"
-    log_info "Get API key from: https://console.anthropic.com/settings/keys"
-    log_info "(Chinese users: enter your relay token + URL)"
-    printf "\n"
-
-    if [ -z "$API_TOKEN" ]; then
-        printf "Anthropic API Key (input hidden): "
-        read -r -s API_TOKEN
-        printf "\n"
-    fi
-    if [ -z "$BASE_URL" ]; then
-        printf "Anthropic Base URL (leave empty for official): "
-        read -r BASE_URL
-    fi
-    if [ -z "$MODEL" ]; then
-        printf "Model name (optional, e.g. deepseek-chat / gpt-4o; Enter to skip): "
-        read -r MODEL
-    fi
-    local ccd ccans
-    if [ $INSTALL_CC_SWITCH -eq 1 ]; then ccd="Y/n"; else ccd="y/N"; fi
-    printf "Install cc-switch (multi-provider switcher GUI, recommended)? [%s]: " "$ccd"
-    read -r ccans
-    ccans=$(echo "$ccans" | tr '[:upper:]' '[:lower:]')
-    if [ -n "$ccans" ]; then
-        if [ "$ccans" = "y" ]; then INSTALL_CC_SWITCH=1; else INSTALL_CC_SWITCH=0; fi
-    fi
-}
-
-get_creds() {
-    if [ $NON_INTERACTIVE -eq 1 ]; then
-        if [ -z "$API_TOKEN" ]; then
-            log_err "--non-interactive requires --token"
-            exit 2
-        fi
-        return 0
-    fi
-    if [ -n "$API_TOKEN" ] && [ -n "$BASE_URL" ]; then
-        log_ok "Using credentials from command line"
-        return 0
-    fi
-    if command_exists osascript && prompt_creds_osascript; then
-        log_ok "Credentials captured via dialog"
-        return 0
-    fi
-    log_warn "Falling back to console prompt"
-    prompt_creds_console
-    if [ -z "$API_TOKEN" ]; then
-        log_err "API token is required."
-        exit 2
+        log_info "Open cc-switch from Launchpad / Applications to add your API key / provider."
     fi
 }
 
@@ -505,6 +403,11 @@ render_settings() {
     fi
 
     local content; content=$(cat "$tpl")
+
+    # Drop the ANTHROPIC_AUTH_TOKEN line if no key was passed (user configures in cc-switch).
+    if [ -z "$API_TOKEN" ]; then
+        content=$(printf '%s\n' "$content" | grep -v '"ANTHROPIC_AUTH_TOKEN"')
+    fi
 
     # Drop the ANTHROPIC_BASE_URL line entirely if URL is empty.
     if [ -z "$BASE_URL" ]; then
@@ -617,12 +520,14 @@ show_success() {
     printf "${C_GREEN}${C_BOLD}+============================================================+${C_RESET}\n\n"
     printf "  Claude Code config installed at: ${C_BOLD}%s${C_RESET}\n" "$CLAUDE_HOME"
     printf "  8 MCP servers configured in ~/.claude.json\n\n"
-    printf "  ${C_YELLOW}Next steps:${C_RESET}\n"
-    printf "    1. Open VS Code (or run: ${C_BOLD}code .${C_RESET})\n"
-    printf "    2. Press ${C_BOLD}Cmd+Shift+P${C_RESET} -> \"Claude Code: Open Chat\"\n"
-    printf "    3. Try a command: ${C_BOLD}/doctor${C_RESET} to verify your setup\n\n"
-    printf "  ${C_YELLOW}Or from a terminal:${C_RESET}\n"
-    printf "    ${C_BOLD}claude${C_RESET}\n\n"
+    printf "  ${C_YELLOW}IMPORTANT - set up your API key in cc-switch first:${C_RESET}\n"
+    printf "    1. cc-switch should have opened. If not, open it from Launchpad / Applications.\n"
+    printf "    2. Click \"Add Provider\": enter your API key + Base URL\n"
+    printf "       (pick the Claude/Anthropic preset, or your relay -- gpt/OpenAI relays work too).\n"
+    printf "    3. Click \"Enable\" -- cc-switch writes the config for Claude Code.\n\n"
+    printf "  ${C_YELLOW}Then use Claude Code:${C_RESET}\n"
+    printf "    - VS Code: ${C_BOLD}Cmd+Shift+P${C_RESET} -> \"Claude Code: Open Chat\"\n"
+    printf "    - Terminal: ${C_BOLD}claude${C_RESET}\n\n"
     printf "  ${C_CYAN}Documentation: https://github.com/liujiarui0918/claude-code-strongest${C_RESET}\n\n"
 }
 
@@ -648,12 +553,9 @@ main() {
         log_warn "Skipping prerequisites install (--skip-prereqs)"
     fi
 
-    get_creds
-    log_ok "Credentials captured"
-
     if [ $INSTALL_CC_SWITCH -eq 1 ]; then
         if [ $SKIP_PREREQS -eq 1 ]; then
-            log_warn "cc-switch requested but --skip-prereqs set; skipping cc-switch install."
+            log_warn "cc-switch install skipped (--skip-prereqs). Install it yourself or set creds manually."
         else
             install_cc_switch
         fi
@@ -665,6 +567,11 @@ main() {
 
     if [ $DRY_RUN -eq 0 ]; then
         verify_install
+    fi
+
+    # Open cc-switch so the user can enter their provider (unless skipped or non-interactive/CI).
+    if [ $INSTALL_CC_SWITCH -eq 1 ] && [ $NON_INTERACTIVE -eq 0 ]; then
+        open_cc_switch
     fi
 
     show_success

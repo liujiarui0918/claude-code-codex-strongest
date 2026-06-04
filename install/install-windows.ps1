@@ -6,16 +6,20 @@
 .DESCRIPTION
     Installs VS Code, Claude Code CLI, official VS Code extension, and deploys
     the full ~/.claude/ configuration (skills, agents, commands, hooks) plus the
-    8 MCP servers into ~/.claude.json.
+    8 MCP servers into ~/.claude.json. Also installs cc-switch (a multi-provider /
+    multi-model GUI) and opens it at the end so you enter your API key / provider
+    there -- there is NO credential popup. Use -NoCcSwitch to skip cc-switch.
 
 .PARAMETER ClaudeHome
     Override the default ~/.claude install location.
 
 .PARAMETER ApiToken
-    Anthropic API key (sk-ant-... or your relay token). If empty, prompts.
+    Optional Anthropic API key / relay token for scripted installs. If omitted, no
+    credentials are written to settings.json -- configure your provider in cc-switch
+    (which this installer opens at the end) instead.
 
 .PARAMETER BaseUrl
-    Anthropic API base URL. Empty = official api.anthropic.com.
+    Optional Anthropic API base URL for scripted installs (paired with -ApiToken).
 
 .PARAMETER Model
     Optional model name. If set, both ANTHROPIC_MODEL and ANTHROPIC_DEFAULT_HAIKU_MODEL
@@ -41,7 +45,7 @@
     Overwrite existing ~/.claude without prompting (backs up first).
 
 .PARAMETER NonInteractive
-    Skip all prompts. ApiToken must be provided via -ApiToken.
+    Do not auto-open cc-switch when the install finishes (for CI/scripted installs).
 
 .PARAMETER SkipPrereqs
     Skip installing VS Code / Git / Node.js / uv / Claude Code CLI.
@@ -282,158 +286,50 @@ function Install-CcSwitch {
 }
 
 # ============================================================================
-# User input (token + URL)
+# Credentials (no popup -- cc-switch is the entry point)
 # ============================================================================
-function Get-Creds-WinForms {
-    param([string]$ExistingToken, [string]$ExistingUrl, [string]$ExistingModel, [bool]$CcSwitchDefault)
-    try {
-        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-        Add-Type -AssemblyName System.Drawing       -ErrorAction Stop
-    } catch {
-        return $null
-    }
-
-    $form           = New-Object System.Windows.Forms.Form
-    $form.Text      = 'Claude Code Strongest - Credentials'
-    $form.Size      = New-Object System.Drawing.Size(520, 410)
-    $form.StartPosition = 'CenterScreen'
-    $form.FormBorderStyle = 'FixedDialog'
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
-
-    $lblToken = New-Object System.Windows.Forms.Label
-    $lblToken.Text = 'Anthropic API Key (sk-ant-... or relay token):'
-    $lblToken.Location = New-Object System.Drawing.Point(20, 18)
-    $lblToken.Size = New-Object System.Drawing.Size(460, 20)
-    $form.Controls.Add($lblToken)
-
-    $txtToken = New-Object System.Windows.Forms.TextBox
-    $txtToken.UseSystemPasswordChar = $true
-    $txtToken.Location = New-Object System.Drawing.Point(20, 40)
-    $txtToken.Size = New-Object System.Drawing.Size(460, 24)
-    $txtToken.Text = $ExistingToken
-    $form.Controls.Add($txtToken)
-
-    $lblUrl = New-Object System.Windows.Forms.Label
-    $lblUrl.Text = 'Anthropic Base URL (leave empty for official api.anthropic.com):'
-    $lblUrl.Location = New-Object System.Drawing.Point(20, 74)
-    $lblUrl.Size = New-Object System.Drawing.Size(460, 20)
-    $form.Controls.Add($lblUrl)
-
-    $txtUrl = New-Object System.Windows.Forms.TextBox
-    $txtUrl.Location = New-Object System.Drawing.Point(20, 96)
-    $txtUrl.Size = New-Object System.Drawing.Size(460, 24)
-    $txtUrl.Text = $ExistingUrl
-    $form.Controls.Add($txtUrl)
-
-    $lblModel = New-Object System.Windows.Forms.Label
-    $lblModel.Text = 'Model name (optional, e.g. deepseek-chat / gpt-4o; empty = default):'
-    $lblModel.Location = New-Object System.Drawing.Point(20, 130)
-    $lblModel.Size = New-Object System.Drawing.Size(460, 20)
-    $form.Controls.Add($lblModel)
-
-    $txtModel = New-Object System.Windows.Forms.TextBox
-    $txtModel.Location = New-Object System.Drawing.Point(20, 152)
-    $txtModel.Size = New-Object System.Drawing.Size(460, 24)
-    $txtModel.Text = $ExistingModel
-    $form.Controls.Add($txtModel)
-
-    $lblHint = New-Object System.Windows.Forms.Label
-    $lblHint.Text = "Tip: Get API key from https://console.anthropic.com/settings/keys`r`nRelay users: enter your relay URL + the model name your relay expects."
-    $lblHint.Location = New-Object System.Drawing.Point(20, 184)
-    $lblHint.Size = New-Object System.Drawing.Size(460, 36)
-    $lblHint.ForeColor = [System.Drawing.Color]::DimGray
-    $form.Controls.Add($lblHint)
-
-    $chkCcSwitch = New-Object System.Windows.Forms.CheckBox
-    $chkCcSwitch.Text = 'Install cc-switch (recommended): GUI to switch between API providers / models, incl. OpenAI-format (gpt) relays. Uncheck to skip.'
-    $chkCcSwitch.Location = New-Object System.Drawing.Point(20, 228)
-    $chkCcSwitch.Size = New-Object System.Drawing.Size(460, 44)
-    $chkCcSwitch.Checked = $CcSwitchDefault
-    $form.Controls.Add($chkCcSwitch)
-
-    $btnOk = New-Object System.Windows.Forms.Button
-    $btnOk.Text = 'Install'
-    $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $btnOk.Location = New-Object System.Drawing.Point(290, 320)
-    $btnOk.Size = New-Object System.Drawing.Size(90, 30)
-    $form.Controls.Add($btnOk)
-    $form.AcceptButton = $btnOk
-
-    $btnCancel = New-Object System.Windows.Forms.Button
-    $btnCancel.Text = 'Cancel'
-    $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $btnCancel.Location = New-Object System.Drawing.Point(390, 320)
-    $btnCancel.Size = New-Object System.Drawing.Size(90, 30)
-    $form.Controls.Add($btnCancel)
-    $form.CancelButton = $btnCancel
-
-    $form.Topmost = $true
-    $result = $form.ShowDialog()
-    if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
-        return $null
-    }
-    return @{
-        Token          = $txtToken.Text.Trim()
-        Url            = $txtUrl.Text.Trim()
-        Model          = $txtModel.Text.Trim()
-        InstallCcSwitch = $chkCcSwitch.Checked
-    }
-}
-
-function Get-Creds-Console {
-    param([string]$ExistingToken, [string]$ExistingUrl, [string]$ExistingModel, [bool]$CcSwitchDefault)
-    Write-Host ''
-    Write-Step 'Enter credentials'
-    Write-Info 'Get API key from: https://console.anthropic.com/settings/keys'
-    Write-Info '(Or for Chinese users using a relay, enter your relay token + URL)'
-    Write-Host ''
-
-    $token = $ExistingToken
-    if (-not $token) {
-        $sec = Read-Host -Prompt 'Anthropic API Key (input hidden)' -AsSecureString
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
-        try {
-            $token = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-        } finally {
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-        }
-    }
-    $url = $ExistingUrl
-    if (-not $url) {
-        $url = Read-Host -Prompt 'Anthropic Base URL (leave empty for official, press Enter to skip)'
-    }
-    $model = $ExistingModel
-    if (-not $model) {
-        $model = Read-Host -Prompt 'Model name (optional, e.g. deepseek-chat / gpt-4o; Enter to skip)'
-    }
-    $cc = $CcSwitchDefault
-    $ccPromptDefault = if ($cc) { 'Y/n' } else { 'y/N' }
-    $ans = Read-Host -Prompt "Install cc-switch (multi-provider switcher GUI, recommended)? [$ccPromptDefault]"
-    if ($ans) { $cc = ($ans.Trim().ToLower() -eq 'y') }
-    return @{ Token = $token.Trim(); Url = $url.Trim(); Model = $model.Trim(); InstallCcSwitch = [bool]$cc }
-}
-
+# We do NOT prompt for an API key. Any values passed via -ApiToken/-BaseUrl/-Model are
+# written to settings.json (handy for scripted installs); otherwise those env vars are
+# omitted and the user enters their provider in cc-switch, which we open at the end.
 function Get-Creds {
     param([string]$ExistingToken, [string]$ExistingUrl, [string]$ExistingModel)
-    if ($NonInteractive) {
-        return @{
-            Token           = $ExistingToken.Trim()
-            Url             = $ExistingUrl.Trim()
-            Model           = $ExistingModel.Trim()
-            InstallCcSwitch = (-not $NoCcSwitch)
+    return @{
+        Token = $ExistingToken.Trim()
+        Url   = $ExistingUrl.Trim()
+        Model = $ExistingModel.Trim()
+    }
+}
+
+# Best-effort: open cc-switch so the user can add their provider (API key + URL).
+# Tries Start Menu shortcuts (most reliable across winget installs), then known exe paths.
+function Open-CcSwitch {
+    try {
+        $menus = @(
+            (Join-Path $env:APPDATA   'Microsoft\Windows\Start Menu\Programs'),
+            (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')
+        )
+        foreach ($m in $menus) {
+            if (-not (Test-Path $m)) { continue }
+            $lnk = Get-ChildItem -Path $m -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue |
+                   Where-Object { $_.BaseName -match 'cc.?switch' } | Select-Object -First 1
+            if ($lnk) {
+                Start-Process $lnk.FullName
+                Write-Ok 'Opened cc-switch -- add your provider (API key + URL) there.'
+                return $true
+            }
         }
-    }
-    $ccDefault = (-not $NoCcSwitch)
-    $r = Get-Creds-WinForms -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl -ExistingModel $ExistingModel -CcSwitchDefault $ccDefault
-    if ($null -eq $r) {
-        Write-Warn 'WinForms dialog unavailable or cancelled; falling back to console prompt.'
-        $r = Get-Creds-Console -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl -ExistingModel $ExistingModel -CcSwitchDefault $ccDefault
-    }
-    if ([string]::IsNullOrWhiteSpace($r.Token)) {
-        throw 'API token is required.'
-    }
-    return $r
+        $exe = @(
+            (Join-Path $env:LOCALAPPDATA 'Programs\cc-switch\cc-switch.exe'),
+            (Join-Path $env:ProgramFiles 'cc-switch\cc-switch.exe')
+        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($exe) {
+            Start-Process $exe
+            Write-Ok 'Opened cc-switch -- add your provider (API key + URL) there.'
+            return $true
+        }
+    } catch {}
+    Write-Info 'Open cc-switch from the Start Menu to add your API key / provider.'
+    return $false
 }
 
 # ============================================================================
@@ -484,6 +380,7 @@ function Render-Settings {
         [string]$TemplatePath,
         [string]$OutPath,
         [hashtable]$Values,
+        [bool]$TokenEmpty,
         [bool]$UrlEmpty,
         [bool]$ModelEmpty
     )
@@ -492,6 +389,11 @@ function Render-Settings {
         throw "Template not found: $TemplatePath"
     }
     $content = Get-Content -LiteralPath $TemplatePath -Raw -Encoding UTF8
+
+    if ($TokenEmpty) {
+        # No API key passed -> drop the line; the user configures the provider in cc-switch.
+        $content = $content -replace '(?m)^\s*"ANTHROPIC_AUTH_TOKEN":\s*"\{\{ANTHROPIC_AUTH_TOKEN\}\}",?\r?\n', ''
+    }
 
     if ($UrlEmpty) {
         # Strip the ANTHROPIC_BASE_URL line entirely so Claude Code uses the default.
@@ -595,13 +497,15 @@ function Show-Success {
     Write-Host "  Claude Code config installed at: $ClaudeHome" -ForegroundColor White
     Write-Host '  8 MCP servers configured in ~/.claude.json' -ForegroundColor White
     Write-Host ''
-    Write-Host '  Next steps:' -ForegroundColor Yellow
-    Write-Host '    1. Open VS Code (or run: code .)' -ForegroundColor White
-    Write-Host '    2. Press Ctrl+Shift+P -> "Claude Code: Open Chat"' -ForegroundColor White
-    Write-Host '    3. Try a command: "/doctor" to verify your setup' -ForegroundColor White
+    Write-Host '  IMPORTANT - set up your API key in cc-switch first:' -ForegroundColor Yellow
+    Write-Host '    1. cc-switch should have opened. If not, open it from the Start Menu.' -ForegroundColor White
+    Write-Host '    2. Click "Add Provider": enter your API key + Base URL' -ForegroundColor White
+    Write-Host '       (pick the Claude/Anthropic preset, or your relay -- gpt/OpenAI relays work too).' -ForegroundColor White
+    Write-Host '    3. Click "Enable" -- cc-switch writes the config for Claude Code.' -ForegroundColor White
     Write-Host ''
-    Write-Host '  Or from a terminal:' -ForegroundColor Yellow
-    Write-Host '    claude' -ForegroundColor White
+    Write-Host '  Then use Claude Code:' -ForegroundColor Yellow
+    Write-Host '    - VS Code: Ctrl+Shift+P -> "Claude Code: Open Chat"' -ForegroundColor White
+    Write-Host '    - Terminal: claude' -ForegroundColor White
     Write-Host ''
     Write-Host '  Documentation: https://github.com/liujiarui0918/claude-code-strongest' -ForegroundColor Cyan
     Write-Host ''
@@ -634,11 +538,10 @@ try {
     }
 
     $creds = Get-Creds -ExistingToken $ApiToken -ExistingUrl $BaseUrl -ExistingModel $Model
-    Write-Ok 'Credentials captured'
 
-    if ($creds.InstallCcSwitch) {
+    if (-not $NoCcSwitch) {
         if ($SkipPrereqs) {
-            Write-Warn 'cc-switch requested but -SkipPrereqs is set; skipping cc-switch install.'
+            Write-Warn 'cc-switch install skipped (-SkipPrereqs). Install it yourself or configure creds manually.'
         } else {
             Install-CcSwitch
         }
@@ -648,6 +551,7 @@ try {
 
     $tplPath    = Join-Path $repoRoot 'settings.template.json'
     $outPath    = Join-Path $ClaudeHome 'settings.json'
+    $tokenEmpty = [string]::IsNullOrWhiteSpace($creds.Token)
     $urlEmpty   = [string]::IsNullOrWhiteSpace($creds.Url)
     $modelEmpty = [string]::IsNullOrWhiteSpace($creds.Model)
     $vals = @{
@@ -659,11 +563,15 @@ try {
         $vals['ANTHROPIC_MODEL']               = $creds.Model
         $vals['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = $creds.Model
     }
-    Render-Settings -TemplatePath $tplPath -OutPath $outPath -UrlEmpty $urlEmpty -ModelEmpty $modelEmpty -Values $vals
+    Render-Settings -TemplatePath $tplPath -OutPath $outPath -TokenEmpty $tokenEmpty -UrlEmpty $urlEmpty -ModelEmpty $modelEmpty -Values $vals
 
     Deploy-MCP -RepoRoot $repoRoot -Timezone $Timezone
 
     Verify-Install -ClaudeHome $ClaudeHome
+
+    if (-not $NoCcSwitch -and -not $NonInteractive) {
+        Open-CcSwitch | Out-Null
+    }
 
     Show-Success -ClaudeHome $ClaudeHome
     exit 0
