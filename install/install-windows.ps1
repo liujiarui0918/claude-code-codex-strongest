@@ -17,6 +17,16 @@
 .PARAMETER BaseUrl
     Anthropic API base URL. Empty = official api.anthropic.com.
 
+.PARAMETER Model
+    Optional model name. If set, both ANTHROPIC_MODEL and ANTHROPIC_DEFAULT_HAIKU_MODEL
+    are pinned to it -- so a single-model relay (e.g. deepseek-chat, gpt-4o) works for
+    both foreground and background calls. Empty = use Claude Code defaults. For per-tier
+    (Opus/Sonnet/Haiku) routing or juggling multiple providers, use cc-switch instead.
+
+.PARAMETER InstallCcSwitch
+    Also install cc-switch (a GUI to switch Claude Code between multiple API providers
+    and models). Installed via winget id farion1231.CC-Switch.
+
 .PARAMETER Reset
     Clean reinstall: back up and remove the existing ~/.claude and ~/.claude.json,
     log out of Claude Code, and uninstall+reinstall the VS Code extension. Use this
@@ -48,8 +58,10 @@ param(
     [string]$ClaudeHome   = '',
     [string]$ApiToken     = '',
     [string]$BaseUrl      = '',
+    [string]$Model        = '',
     [switch]$Reset,
     [string]$Timezone     = 'Asia/Shanghai',
+    [switch]$InstallCcSwitch,
     [switch]$Force,
     [switch]$NonInteractive,
     [switch]$SkipPrereqs,
@@ -256,10 +268,22 @@ function Install-Prerequisites {
 }
 
 # ============================================================================
+# cc-switch (optional multi-provider switcher)
+# ============================================================================
+function Install-CcSwitch {
+    Write-Step 'Installing cc-switch (multi-provider / multi-model switcher GUI)'
+    if (-not (Test-Command 'winget')) {
+        Write-Warn 'winget unavailable; skipping cc-switch. Download: https://github.com/farion1231/cc-switch/releases'
+        return
+    }
+    Invoke-Winget -Id 'farion1231.CC-Switch' -Friendly 'cc-switch' | Out-Null
+}
+
+# ============================================================================
 # User input (token + URL)
 # ============================================================================
 function Get-Creds-WinForms {
-    param([string]$ExistingToken, [string]$ExistingUrl)
+    param([string]$ExistingToken, [string]$ExistingUrl, [string]$ExistingModel, [bool]$CcSwitchDefault)
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
         Add-Type -AssemblyName System.Drawing       -ErrorAction Stop
@@ -269,7 +293,7 @@ function Get-Creds-WinForms {
 
     $form           = New-Object System.Windows.Forms.Form
     $form.Text      = 'Claude Code Strongest - Credentials'
-    $form.Size      = New-Object System.Drawing.Size(520, 280)
+    $form.Size      = New-Object System.Drawing.Size(520, 410)
     $form.StartPosition = 'CenterScreen'
     $form.FormBorderStyle = 'FixedDialog'
     $form.MaximizeBox = $false
@@ -277,40 +301,59 @@ function Get-Creds-WinForms {
 
     $lblToken = New-Object System.Windows.Forms.Label
     $lblToken.Text = 'Anthropic API Key (sk-ant-... or relay token):'
-    $lblToken.Location = New-Object System.Drawing.Point(20, 20)
+    $lblToken.Location = New-Object System.Drawing.Point(20, 18)
     $lblToken.Size = New-Object System.Drawing.Size(460, 20)
     $form.Controls.Add($lblToken)
 
     $txtToken = New-Object System.Windows.Forms.TextBox
     $txtToken.UseSystemPasswordChar = $true
-    $txtToken.Location = New-Object System.Drawing.Point(20, 45)
+    $txtToken.Location = New-Object System.Drawing.Point(20, 40)
     $txtToken.Size = New-Object System.Drawing.Size(460, 24)
     $txtToken.Text = $ExistingToken
     $form.Controls.Add($txtToken)
 
     $lblUrl = New-Object System.Windows.Forms.Label
     $lblUrl.Text = 'Anthropic Base URL (leave empty for official api.anthropic.com):'
-    $lblUrl.Location = New-Object System.Drawing.Point(20, 85)
+    $lblUrl.Location = New-Object System.Drawing.Point(20, 74)
     $lblUrl.Size = New-Object System.Drawing.Size(460, 20)
     $form.Controls.Add($lblUrl)
 
     $txtUrl = New-Object System.Windows.Forms.TextBox
-    $txtUrl.Location = New-Object System.Drawing.Point(20, 110)
+    $txtUrl.Location = New-Object System.Drawing.Point(20, 96)
     $txtUrl.Size = New-Object System.Drawing.Size(460, 24)
     $txtUrl.Text = $ExistingUrl
     $form.Controls.Add($txtUrl)
 
+    $lblModel = New-Object System.Windows.Forms.Label
+    $lblModel.Text = 'Model name (optional, e.g. deepseek-chat / gpt-4o; empty = default):'
+    $lblModel.Location = New-Object System.Drawing.Point(20, 130)
+    $lblModel.Size = New-Object System.Drawing.Size(460, 20)
+    $form.Controls.Add($lblModel)
+
+    $txtModel = New-Object System.Windows.Forms.TextBox
+    $txtModel.Location = New-Object System.Drawing.Point(20, 152)
+    $txtModel.Size = New-Object System.Drawing.Size(460, 24)
+    $txtModel.Text = $ExistingModel
+    $form.Controls.Add($txtModel)
+
     $lblHint = New-Object System.Windows.Forms.Label
-    $lblHint.Text = "Tip: Get API key from https://console.anthropic.com/settings/keys`r`nFor relay services (Chinese users), enter your relay URL here."
-    $lblHint.Location = New-Object System.Drawing.Point(20, 145)
-    $lblHint.Size = New-Object System.Drawing.Size(460, 40)
+    $lblHint.Text = "Tip: Get API key from https://console.anthropic.com/settings/keys`r`nRelay users: enter your relay URL + the model name your relay expects."
+    $lblHint.Location = New-Object System.Drawing.Point(20, 184)
+    $lblHint.Size = New-Object System.Drawing.Size(460, 36)
     $lblHint.ForeColor = [System.Drawing.Color]::DimGray
     $form.Controls.Add($lblHint)
+
+    $chkCcSwitch = New-Object System.Windows.Forms.CheckBox
+    $chkCcSwitch.Text = 'Also install cc-switch (a GUI to switch Claude Code between multiple API providers and models)'
+    $chkCcSwitch.Location = New-Object System.Drawing.Point(20, 228)
+    $chkCcSwitch.Size = New-Object System.Drawing.Size(460, 44)
+    $chkCcSwitch.Checked = $CcSwitchDefault
+    $form.Controls.Add($chkCcSwitch)
 
     $btnOk = New-Object System.Windows.Forms.Button
     $btnOk.Text = 'Install'
     $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $btnOk.Location = New-Object System.Drawing.Point(290, 200)
+    $btnOk.Location = New-Object System.Drawing.Point(290, 320)
     $btnOk.Size = New-Object System.Drawing.Size(90, 30)
     $form.Controls.Add($btnOk)
     $form.AcceptButton = $btnOk
@@ -318,7 +361,7 @@ function Get-Creds-WinForms {
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = 'Cancel'
     $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $btnCancel.Location = New-Object System.Drawing.Point(390, 200)
+    $btnCancel.Location = New-Object System.Drawing.Point(390, 320)
     $btnCancel.Size = New-Object System.Drawing.Size(90, 30)
     $form.Controls.Add($btnCancel)
     $form.CancelButton = $btnCancel
@@ -329,13 +372,15 @@ function Get-Creds-WinForms {
         return $null
     }
     return @{
-        Token = $txtToken.Text.Trim()
-        Url   = $txtUrl.Text.Trim()
+        Token          = $txtToken.Text.Trim()
+        Url            = $txtUrl.Text.Trim()
+        Model          = $txtModel.Text.Trim()
+        InstallCcSwitch = $chkCcSwitch.Checked
     }
 }
 
 function Get-Creds-Console {
-    param([string]$ExistingToken, [string]$ExistingUrl)
+    param([string]$ExistingToken, [string]$ExistingUrl, [string]$ExistingModel, [bool]$CcSwitchDefault)
     Write-Host ''
     Write-Step 'Enter credentials'
     Write-Info 'Get API key from: https://console.anthropic.com/settings/keys'
@@ -356,18 +401,33 @@ function Get-Creds-Console {
     if (-not $url) {
         $url = Read-Host -Prompt 'Anthropic Base URL (leave empty for official, press Enter to skip)'
     }
-    return @{ Token = $token.Trim(); Url = $url.Trim() }
+    $model = $ExistingModel
+    if (-not $model) {
+        $model = Read-Host -Prompt 'Model name (optional, e.g. deepseek-chat / gpt-4o; Enter to skip)'
+    }
+    $cc = $CcSwitchDefault
+    if (-not $cc) {
+        $ans = Read-Host -Prompt 'Also install cc-switch (multi-provider switcher GUI)? [y/N]'
+        $cc  = ($ans -and $ans.ToLower() -eq 'y')
+    }
+    return @{ Token = $token.Trim(); Url = $url.Trim(); Model = $model.Trim(); InstallCcSwitch = [bool]$cc }
 }
 
 function Get-Creds {
-    param([string]$ExistingToken, [string]$ExistingUrl)
+    param([string]$ExistingToken, [string]$ExistingUrl, [string]$ExistingModel)
     if ($NonInteractive) {
-        return @{ Token = $ExistingToken.Trim(); Url = $ExistingUrl.Trim() }
+        return @{
+            Token           = $ExistingToken.Trim()
+            Url             = $ExistingUrl.Trim()
+            Model           = $ExistingModel.Trim()
+            InstallCcSwitch = [bool]$InstallCcSwitch
+        }
     }
-    $r = Get-Creds-WinForms -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl
+    $ccDefault = [bool]$InstallCcSwitch
+    $r = Get-Creds-WinForms -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl -ExistingModel $ExistingModel -CcSwitchDefault $ccDefault
     if ($null -eq $r) {
         Write-Warn 'WinForms dialog unavailable or cancelled; falling back to console prompt.'
-        $r = Get-Creds-Console -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl
+        $r = Get-Creds-Console -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl -ExistingModel $ExistingModel -CcSwitchDefault $ccDefault
     }
     if ([string]::IsNullOrWhiteSpace($r.Token)) {
         throw 'API token is required.'
@@ -423,7 +483,8 @@ function Render-Settings {
         [string]$TemplatePath,
         [string]$OutPath,
         [hashtable]$Values,
-        [bool]$UrlEmpty
+        [bool]$UrlEmpty,
+        [bool]$ModelEmpty
     )
     Write-Step 'Phase 3/5: Rendering settings.json from template'
     if (-not (Test-Path $TemplatePath)) {
@@ -434,6 +495,12 @@ function Render-Settings {
     if ($UrlEmpty) {
         # Strip the ANTHROPIC_BASE_URL line entirely so Claude Code uses the default.
         $content = $content -replace '(?m)^\s*"ANTHROPIC_BASE_URL":\s*"\{\{ANTHROPIC_BASE_URL\}\}",?\r?\n', ''
+    }
+
+    if ($ModelEmpty) {
+        # No model override -> drop both model lines so Claude Code uses its defaults.
+        $content = $content -replace '(?m)^\s*"ANTHROPIC_MODEL":\s*"\{\{ANTHROPIC_MODEL\}\}",?\r?\n', ''
+        $content = $content -replace '(?m)^\s*"ANTHROPIC_DEFAULT_HAIKU_MODEL":\s*"\{\{ANTHROPIC_DEFAULT_HAIKU_MODEL\}\}",?\r?\n', ''
     }
 
     foreach ($k in $Values.Keys) {
@@ -565,19 +632,33 @@ try {
         Write-Warn 'Skipping prerequisites install (-SkipPrereqs).'
     }
 
-    $creds = Get-Creds -ExistingToken $ApiToken -ExistingUrl $BaseUrl
+    $creds = Get-Creds -ExistingToken $ApiToken -ExistingUrl $BaseUrl -ExistingModel $Model
     Write-Ok 'Credentials captured'
+
+    if ($creds.InstallCcSwitch) {
+        if ($SkipPrereqs) {
+            Write-Warn 'cc-switch requested but -SkipPrereqs is set; skipping cc-switch install.'
+        } else {
+            Install-CcSwitch
+        }
+    }
 
     Deploy-Repo -RepoRoot $repoRoot -ClaudeHome $ClaudeHome
 
-    $tplPath = Join-Path $repoRoot 'settings.template.json'
-    $outPath = Join-Path $ClaudeHome 'settings.json'
-    $urlEmpty = [string]::IsNullOrWhiteSpace($creds.Url)
-    Render-Settings -TemplatePath $tplPath -OutPath $outPath -UrlEmpty $urlEmpty -Values @{
+    $tplPath    = Join-Path $repoRoot 'settings.template.json'
+    $outPath    = Join-Path $ClaudeHome 'settings.json'
+    $urlEmpty   = [string]::IsNullOrWhiteSpace($creds.Url)
+    $modelEmpty = [string]::IsNullOrWhiteSpace($creds.Model)
+    $vals = @{
         ANTHROPIC_AUTH_TOKEN = $creds.Token
         ANTHROPIC_BASE_URL   = $creds.Url
         CLAUDE_HOME          = $ClaudeHome.Replace('\', '/')
     }
+    if (-not $modelEmpty) {
+        $vals['ANTHROPIC_MODEL']               = $creds.Model
+        $vals['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = $creds.Model
+    }
+    Render-Settings -TemplatePath $tplPath -OutPath $outPath -UrlEmpty $urlEmpty -ModelEmpty $modelEmpty -Values $vals
 
     Deploy-MCP -RepoRoot $repoRoot -Timezone $Timezone
 

@@ -28,7 +28,7 @@
 
 1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest)，下载 **`install-windows.bat`**
 2. **双击它**（若 SmartScreen 拦截：点"更多信息"→"仍要运行"）
-3. 弹窗里填 API key（必填）+ Base URL（可空 = 官方 Anthropic API）
+3. 弹窗里填 API key（必填）+ Base URL（可空 = 官方 Anthropic API）+ 模型名（可空）；想要多供应商/多模型一键切换，可勾选"一并装 cc-switch"
 4. 装完打开 VS Code，`Ctrl+Shift+P` → 输入 `Claude Code: Open Chat`
 
 > 前提：Win11 自带 winget；Win10 若没有，去 Microsoft Store 装一下 "App Installer"。
@@ -37,7 +37,7 @@
 
 1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest)，下载 **`install-macos.command`**
 2. **双击它**（若被拦：右键 → 打开，或"系统设置 → 隐私与安全性 → 仍要打开"）
-3. 弹出原生对话框填 API key + URL
+3. 弹出原生对话框依次填 API key、Base URL（可空）、模型名（可空），最后可选是否一并装 cc-switch
 4. 装完用 VS Code 或终端跑 `claude`
 
 #### 或者：一行命令（给会用终端的人）
@@ -136,6 +136,12 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 - **官方 Anthropic**：[console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) 生成 `sk-ant-...`
 - **国内中转站**（自行选择）：填中转商提供的 token + base URL
 
+#### 模型名 / 用 GPT、DeepSeek 等别家模型
+- **模型名字段（可空）**：留空 = 用 Claude Code 默认模型（适合标准 Claude 中转站）。填了 V（如 `deepseek-chat`、`gpt-4o`）会把 `ANTHROPIC_MODEL` 和 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 都设成 V，这样**单模型中转站**的前台和后台调用都走同一个模型，不会因后台 Haiku 调用失败。
+- **大多数中转站本身就暴露 Anthropic 格式 `/v1/messages` 端点**（服务端帮你转 GPT/DeepSeek），这种情况**只要填对模型名即可，不需要任何本地翻译**。
+- **多供应商/多模型切换**：勾选安装 [cc-switch](https://github.com/farion1231/cc-switch)（Win: `winget install -e --id farion1231.CC-Switch`；Mac: `brew install --cask cc-switch`）——一个 GUI，集中管理多套 Provider（含按 Opus/Sonnet/Haiku 分级映射）、一键切换、健康检查、用量统计。
+- **真要本地把原生 OpenAI 格式翻译成 Anthropic**（直连 `api.deepseek.com` 这类）：用 [claude-code-router](https://github.com/musistudio/claude-code-router)（transformer + 按任务路由）。本项目不自造翻译轮子。
+
 #### 进阶：克隆仓库后本地运行
 ```powershell
 git clone https://github.com/liujiarui0918/claude-code-strongest.git
@@ -151,8 +157,12 @@ cd claude-code-strongest
 
 #### 非交互模式（CI/批量部署）
 ```powershell
-.\install\install-windows.ps1 -ApiToken 'sk-ant-xxx' -BaseUrl '' -NonInteractive -Force
+.\install\install-windows.ps1 -ApiToken 'sk-ant-xxx' -BaseUrl '' -Model '' -NonInteractive -Force
 ./install/install-macos.sh --token 'sk-ant-xxx' --url '' --non-interactive --force
+
+# 用别家模型 + 同时装 cc-switch：
+.\install\install-windows.ps1 -ApiToken 'xxx' -BaseUrl 'https://relay.example.com' -Model 'deepseek-chat' -InstallCcSwitch -NonInteractive -Force
+./install/install-macos.sh --token 'xxx' --url 'https://relay.example.com' --model 'deepseek-chat' --install-cc-switch --non-interactive --force
 ```
 
 ### 文件结构
@@ -267,6 +277,8 @@ A normal re-install (without `-Reset`) is also safe: it auto-backs-up existing c
 
 - `--token` / `-ApiToken` (or GUI prompt): your Anthropic API key
 - `--url` / `-BaseUrl`: optional relay URL (empty = official Anthropic API)
+- `--model` / `-Model`: optional model name; pins `ANTHROPIC_MODEL` + `ANTHROPIC_DEFAULT_HAIKU_MODEL` (e.g. `deepseek-chat`, `gpt-4o`). Empty = Claude Code defaults
+- `--install-cc-switch` / `-InstallCcSwitch`: also install [cc-switch](https://github.com/farion1231/cc-switch), a GUI to switch between multiple API providers/models
 - `--reset` / `-Reset`: clean reinstall (back up + wipe old state)
 - `--timezone` / `-Timezone`: IANA tz for the `time` MCP (default Asia/Shanghai)
 - `--claude-home` / `-ClaudeHome`: override `~/.claude` location

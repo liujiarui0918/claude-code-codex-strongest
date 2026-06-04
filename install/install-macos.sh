@@ -22,12 +22,14 @@ set -euo pipefail
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 API_TOKEN=""
 BASE_URL=""
+MODEL=""
 TIMEZONE="Asia/Shanghai"
 NON_INTERACTIVE=0
 SKIP_PREREQS=0
 FORCE=0
 RESET=0
 DRY_RUN=0
+INSTALL_CC_SWITCH=0
 
 # Resolve repo root: this script is in <repo>/install/, go up one.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -98,9 +100,11 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --token)            API_TOKEN="$2"; shift 2 ;;
         --url)              BASE_URL="$2";  shift 2 ;;
+        --model)            MODEL="$2";     shift 2 ;;
         --timezone)         TIMEZONE="$2";  shift 2 ;;
         --claude-home)      CLAUDE_HOME="$2"; shift 2 ;;
         --reset)            RESET=1;           shift ;;
+        --install-cc-switch) INSTALL_CC_SWITCH=1; shift ;;
         --non-interactive)  NON_INTERACTIVE=1; shift ;;
         --skip-prereqs)     SKIP_PREREQS=1;    shift ;;
         --force)            FORCE=1;           shift ;;
@@ -112,9 +116,12 @@ Usage: $0 [options]
 Options:
   --token TOKEN           Anthropic API key (sk-ant-... or relay token)
   --url URL               Base URL (empty = official api.anthropic.com)
+  --model NAME            Pin model name; sets ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_HAIKU_MODEL
+                          (e.g. deepseek-chat, gpt-4o). Empty = Claude Code defaults.
   --timezone TZ           IANA timezone for the 'time' MCP (default Asia/Shanghai)
   --claude-home PATH      Override ~/.claude install location
   --reset                 Clean reinstall: back up + remove old config, re-login, reinstall extension
+  --install-cc-switch     Also install cc-switch (multi-provider switcher GUI) via Homebrew
   --non-interactive       Skip prompts (--token required)
   --skip-prereqs          Skip installing brew / VS Code / Node / etc.
   --force                 Overwrite existing ~/.claude without prompting
@@ -269,6 +276,24 @@ install_vscode_ext() {
     fi
 }
 
+install_cc_switch() {
+    log_step "Installing cc-switch (multi-provider / multi-model switcher GUI)"
+    if [ $DRY_RUN -eq 1 ]; then
+        log_info "[dry-run] would run: brew install --cask cc-switch"
+        return 0
+    fi
+    if ! command_exists brew; then
+        log_warn "Homebrew not available; skipping cc-switch. Download: https://github.com/farion1231/cc-switch/releases"
+        return 0
+    fi
+    # cc-switch is in the official Homebrew cask now -- no tap needed.
+    if brew install --cask cc-switch 2>&1 | tail -5; then
+        log_ok "cc-switch installed"
+    else
+        log_warn "cc-switch install returned non-zero; install later: brew install --cask cc-switch"
+    fi
+}
+
 install_prerequisites() {
     log_step "Phase 1/5: Installing prerequisites"
 
@@ -292,7 +317,7 @@ install_prerequisites() {
 # User input
 # ----------------------------------------------------------------------------
 prompt_creds_osascript() {
-    local token url
+    local token url model ccbtn
     token=$(osascript <<'EOF' 2>/dev/null
 try
     set theResult to display dialog "Anthropic API Key (sk-ant-... or relay token):" default answer "" with hidden answer with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
@@ -308,7 +333,7 @@ EOF
 
     url=$(osascript <<'EOF' 2>/dev/null
 try
-    set theResult to display dialog "Anthropic Base URL (leave empty for official api.anthropic.com):" default answer "" with title "Claude Code Strongest" buttons {"Cancel", "Install"} default button "Install"
+    set theResult to display dialog "Anthropic Base URL (leave empty for official api.anthropic.com):" default answer "" with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
     return text returned of theResult
 on error
     return "__CANCELLED__"
@@ -319,8 +344,38 @@ EOF
         return 1
     fi
 
+    model=$(osascript <<'EOF' 2>/dev/null
+try
+    set theResult to display dialog "Model name (optional). For a single-model relay enter e.g. deepseek-chat or gpt-4o. Leave empty for Claude Code defaults." default answer "" with title "Claude Code Strongest" buttons {"Cancel", "Next"} default button "Next"
+    return text returned of theResult
+on error
+    return "__CANCELLED__"
+end try
+EOF
+)
+    if [ "$model" = "__CANCELLED__" ]; then
+        return 1
+    fi
+
+    ccbtn=$(osascript <<'EOF' 2>/dev/null
+try
+    set theResult to display dialog "Also install cc-switch? (a GUI to switch Claude Code between multiple API providers and models)" with title "Claude Code Strongest" buttons {"Skip", "Install cc-switch"} default button "Skip"
+    return button returned of theResult
+on error
+    return "__CANCELLED__"
+end try
+EOF
+)
+    if [ "$ccbtn" = "__CANCELLED__" ]; then
+        return 1
+    fi
+
     API_TOKEN="$token"
     BASE_URL="$url"
+    MODEL="$model"
+    if [ "$ccbtn" = "Install cc-switch" ]; then
+        INSTALL_CC_SWITCH=1
+    fi
     return 0
 }
 
@@ -339,6 +394,17 @@ prompt_creds_console() {
     if [ -z "$BASE_URL" ]; then
         printf "Anthropic Base URL (leave empty for official): "
         read -r BASE_URL
+    fi
+    if [ -z "$MODEL" ]; then
+        printf "Model name (optional, e.g. deepseek-chat / gpt-4o; Enter to skip): "
+        read -r MODEL
+    fi
+    if [ $INSTALL_CC_SWITCH -eq 0 ]; then
+        printf "Also install cc-switch (multi-provider switcher GUI)? [y/N]: "
+        local ccans
+        read -r ccans
+        ccans=$(echo "$ccans" | tr '[:upper:]' '[:lower:]')
+        if [ "$ccans" = "y" ]; then INSTALL_CC_SWITCH=1; fi
     fi
 }
 
@@ -442,9 +508,16 @@ render_settings() {
         content=$(printf '%s\n' "$content" | grep -v '"ANTHROPIC_BASE_URL"')
     fi
 
+    # Drop both model lines if no model override was given (use Claude Code defaults).
+    if [ -z "$MODEL" ]; then
+        content=$(printf '%s\n' "$content" | grep -v '"ANTHROPIC_MODEL"' | grep -v '"ANTHROPIC_DEFAULT_HAIKU_MODEL"')
+    fi
+
     # Bash 3.2-safe substitution.
     content="${content//\{\{ANTHROPIC_AUTH_TOKEN\}\}/$API_TOKEN}"
     content="${content//\{\{ANTHROPIC_BASE_URL\}\}/$BASE_URL}"
+    content="${content//\{\{ANTHROPIC_MODEL\}\}/$MODEL}"
+    content="${content//\{\{ANTHROPIC_DEFAULT_HAIKU_MODEL\}\}/$MODEL}"
     content="${content//\{\{CLAUDE_HOME\}\}/$CLAUDE_HOME}"
 
     if echo "$content" | grep -qE '\{\{[A-Z_]+\}\}'; then
@@ -574,6 +647,14 @@ main() {
 
     get_creds
     log_ok "Credentials captured"
+
+    if [ $INSTALL_CC_SWITCH -eq 1 ]; then
+        if [ $SKIP_PREREQS -eq 1 ]; then
+            log_warn "cc-switch requested but --skip-prereqs set; skipping cc-switch install."
+        else
+            install_cc_switch
+        fi
+    fi
 
     deploy_repo
     render_settings
