@@ -93,8 +93,14 @@ function Write-Utf8NoBom {
 
 function Get-RepoRoot {
     # install-windows.ps1 lives in <repo>/install/, so go up one level.
-    $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-    if (-not $here) { $here = $PSScriptRoot }
+    # Inside a function, $MyInvocation.MyCommand.Path describes the function call and is
+    # $null -- with ErrorActionPreference=Stop that makes Split-Path throw before any
+    # fallback runs. $PSScriptRoot is the dir of THIS .ps1 file (reliable in PS 3+).
+    $here = $PSScriptRoot
+    if (-not $here) { $here = Split-Path -Parent $PSCommandPath }
+    if (-not $here) {
+        throw 'Cannot determine script directory. Run install-windows.ps1 as a file, not via piped stdin.'
+    }
     return (Resolve-Path (Join-Path $here '..')).Path
 }
 
