@@ -23,9 +23,11 @@
     both foreground and background calls. Empty = use Claude Code defaults. For per-tier
     (Opus/Sonnet/Haiku) routing or juggling multiple providers, use cc-switch instead.
 
-.PARAMETER InstallCcSwitch
-    Also install cc-switch (a GUI to switch Claude Code between multiple API providers
-    and models). Installed via winget id farion1231.CC-Switch.
+.PARAMETER NoCcSwitch
+    Skip installing cc-switch. By default the installer also installs cc-switch
+    (a GUI to switch Claude Code between multiple API providers and models, with a
+    built-in OpenAI<->Anthropic proxy so OpenAI-format relays work). Installed via
+    winget id farion1231.CC-Switch. Pass -NoCcSwitch to skip it.
 
 .PARAMETER Reset
     Clean reinstall: back up and remove the existing ~/.claude and ~/.claude.json,
@@ -61,7 +63,7 @@ param(
     [string]$Model        = '',
     [switch]$Reset,
     [string]$Timezone     = 'Asia/Shanghai',
-    [switch]$InstallCcSwitch,
+    [switch]$NoCcSwitch,
     [switch]$Force,
     [switch]$NonInteractive,
     [switch]$SkipPrereqs,
@@ -344,7 +346,7 @@ function Get-Creds-WinForms {
     $form.Controls.Add($lblHint)
 
     $chkCcSwitch = New-Object System.Windows.Forms.CheckBox
-    $chkCcSwitch.Text = 'Also install cc-switch (a GUI to switch Claude Code between multiple API providers and models)'
+    $chkCcSwitch.Text = 'Install cc-switch (recommended): GUI to switch between API providers / models, incl. OpenAI-format (gpt) relays. Uncheck to skip.'
     $chkCcSwitch.Location = New-Object System.Drawing.Point(20, 228)
     $chkCcSwitch.Size = New-Object System.Drawing.Size(460, 44)
     $chkCcSwitch.Checked = $CcSwitchDefault
@@ -406,10 +408,9 @@ function Get-Creds-Console {
         $model = Read-Host -Prompt 'Model name (optional, e.g. deepseek-chat / gpt-4o; Enter to skip)'
     }
     $cc = $CcSwitchDefault
-    if (-not $cc) {
-        $ans = Read-Host -Prompt 'Also install cc-switch (multi-provider switcher GUI)? [y/N]'
-        $cc  = ($ans -and $ans.ToLower() -eq 'y')
-    }
+    $ccPromptDefault = if ($cc) { 'Y/n' } else { 'y/N' }
+    $ans = Read-Host -Prompt "Install cc-switch (multi-provider switcher GUI, recommended)? [$ccPromptDefault]"
+    if ($ans) { $cc = ($ans.Trim().ToLower() -eq 'y') }
     return @{ Token = $token.Trim(); Url = $url.Trim(); Model = $model.Trim(); InstallCcSwitch = [bool]$cc }
 }
 
@@ -420,10 +421,10 @@ function Get-Creds {
             Token           = $ExistingToken.Trim()
             Url             = $ExistingUrl.Trim()
             Model           = $ExistingModel.Trim()
-            InstallCcSwitch = [bool]$InstallCcSwitch
+            InstallCcSwitch = (-not $NoCcSwitch)
         }
     }
-    $ccDefault = [bool]$InstallCcSwitch
+    $ccDefault = (-not $NoCcSwitch)
     $r = Get-Creds-WinForms -ExistingToken $ExistingToken -ExistingUrl $ExistingUrl -ExistingModel $ExistingModel -CcSwitchDefault $ccDefault
     if ($null -eq $r) {
         Write-Warn 'WinForms dialog unavailable or cancelled; falling back to console prompt.'

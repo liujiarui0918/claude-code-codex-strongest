@@ -29,7 +29,7 @@ SKIP_PREREQS=0
 FORCE=0
 RESET=0
 DRY_RUN=0
-INSTALL_CC_SWITCH=0
+INSTALL_CC_SWITCH=1
 
 # Resolve repo root: this script is in <repo>/install/, go up one.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -104,7 +104,7 @@ while [ $# -gt 0 ]; do
         --timezone)         TIMEZONE="$2";  shift 2 ;;
         --claude-home)      CLAUDE_HOME="$2"; shift 2 ;;
         --reset)            RESET=1;           shift ;;
-        --install-cc-switch) INSTALL_CC_SWITCH=1; shift ;;
+        --no-cc-switch)     INSTALL_CC_SWITCH=0; shift ;;
         --non-interactive)  NON_INTERACTIVE=1; shift ;;
         --skip-prereqs)     SKIP_PREREQS=1;    shift ;;
         --force)            FORCE=1;           shift ;;
@@ -121,7 +121,7 @@ Options:
   --timezone TZ           IANA timezone for the 'time' MCP (default Asia/Shanghai)
   --claude-home PATH      Override ~/.claude install location
   --reset                 Clean reinstall: back up + remove old config, re-login, reinstall extension
-  --install-cc-switch     Also install cc-switch (multi-provider switcher GUI) via Homebrew
+  --no-cc-switch          Skip cc-switch (installed by default: multi-provider switcher GUI via Homebrew)
   --non-interactive       Skip prompts (--token required)
   --skip-prereqs          Skip installing brew / VS Code / Node / etc.
   --force                 Overwrite existing ~/.claude without prompting
@@ -359,7 +359,7 @@ EOF
 
     ccbtn=$(osascript <<'EOF' 2>/dev/null
 try
-    set theResult to display dialog "Also install cc-switch? (a GUI to switch Claude Code between multiple API providers and models)" with title "Claude Code Strongest" buttons {"Skip", "Install cc-switch"} default button "Skip"
+    set theResult to display dialog "Install cc-switch? (recommended: a GUI to switch between API providers/models, incl. OpenAI-format relays)" with title "Claude Code Strongest" buttons {"Skip", "Install cc-switch"} default button "Install cc-switch"
     return button returned of theResult
 on error
     return "__CANCELLED__"
@@ -375,6 +375,8 @@ EOF
     MODEL="$model"
     if [ "$ccbtn" = "Install cc-switch" ]; then
         INSTALL_CC_SWITCH=1
+    else
+        INSTALL_CC_SWITCH=0
     fi
     return 0
 }
@@ -399,12 +401,13 @@ prompt_creds_console() {
         printf "Model name (optional, e.g. deepseek-chat / gpt-4o; Enter to skip): "
         read -r MODEL
     fi
-    if [ $INSTALL_CC_SWITCH -eq 0 ]; then
-        printf "Also install cc-switch (multi-provider switcher GUI)? [y/N]: "
-        local ccans
-        read -r ccans
-        ccans=$(echo "$ccans" | tr '[:upper:]' '[:lower:]')
-        if [ "$ccans" = "y" ]; then INSTALL_CC_SWITCH=1; fi
+    local ccd ccans
+    if [ $INSTALL_CC_SWITCH -eq 1 ]; then ccd="Y/n"; else ccd="y/N"; fi
+    printf "Install cc-switch (multi-provider switcher GUI, recommended)? [%s]: " "$ccd"
+    read -r ccans
+    ccans=$(echo "$ccans" | tr '[:upper:]' '[:lower:]')
+    if [ -n "$ccans" ]; then
+        if [ "$ccans" = "y" ]; then INSTALL_CC_SWITCH=1; else INSTALL_CC_SWITCH=0; fi
     fi
 }
 
