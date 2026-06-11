@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-# No-clone bootstrap for claude-code-strongest (macOS / Linux).
+# No-clone bootstrap for claude-code-codex-strongest (macOS / Linux).
 #
 # Downloads the repo tarball (no git required), extracts to a temp dir, and
 # runs install-macos.sh. Extra arguments are passed through to the installer.
 #
 # One-liner:
-#   curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.sh | bash
 #
 # With arguments:
 #   curl -fsSL .../bootstrap.sh | bash -s -- --reset
@@ -16,7 +16,7 @@
 # ============================================================================
 set -euo pipefail
 
-REPO="liujiarui0918/claude-code-strongest"
+REPO="liujiarui0918/claude-code-codex-strongest"
 REF="${CCS_REF:-main}"
 
 case "$REF" in
@@ -24,7 +24,7 @@ case "$REF" in
     *)              URL="https://github.com/$REPO/archive/refs/heads/$REF.tar.gz" ;;
 esac
 
-echo ">>> Claude Code Strongest bootstrap (ref: $REF)"
+echo ">>> Claude Code Codex Strongest bootstrap (ref: $REF)"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -39,7 +39,7 @@ fi
 echo "    Extracting..."
 tar -xzf "$TMP/repo.tar.gz" -C "$TMP"
 
-DIR="$(find "$TMP" -maxdepth 1 -type d -name 'claude-code-strongest-*' | head -1)"
+DIR="$(find "$TMP" -maxdepth 1 -type d -name 'claude-code-codex-strongest-*' | head -1)"
 if [ -z "$DIR" ]; then
     echo "    Extraction failed: repo folder not found."
     exit 1

@@ -1,6 +1,6 @@
-# Claude Code Strongest
+# Claude Code Codex Strongest
 
-> **The opinionated, batteries-included Claude Code setup.**
+> **The opinionated, batteries-included Claude Code + Codex setup.**
 > 33 skills · 22 agents · 25 commands · 12 hooks · 8 MCP servers — preconfigured, **one-click installable (no clone, no git)** on Windows & macOS.
 
 [简体中文](#中文说明) · [English](#english)
@@ -11,9 +11,9 @@
 
 ### 这是什么
 
-为 [Claude Code](https://claude.com/claude-code) 准备的「开箱即用」配置全家桶 + 一键安装器。
+为 [Claude Code](https://claude.com/claude-code) 和 Codex 准备的「开箱即用」配置全家桶 + 一键安装器。
 
-把作者本机日积月累调教好的 `~/.claude/`（skills、subagents、commands、hooks、MCP servers）整个打包发出来，再写两个跨平台安装器：你**下载一个文件、双击一下**，VS Code、Claude Code CLI、官方插件、Node.js、Git、PowerShell、uv 全自动装好，配置部署到你的 `~/.claude/`，8 个 MCP 服务器写进 `~/.claude.json`。
+把作者本机日积月累调教好的 `~/.claude/`（skills、subagents、commands、hooks、MCP servers）整个打包发出来，再写两个跨平台安装器：你**下载一个文件、双击一下**，VS Code、Windows VS Code desktop shortcut、Claude Code CLI、anthropic.claude-code VS Code 扩展、Codex CLI、openai.chatgpt VS Code 扩展、中文语言包、Office 文档预览扩展、Node.js、Git、PowerShell、uv 全自动装好，配置部署到你的 `~/.claude/`，**Claude Code Codex Strongest / claude-code-codex-strongest** 配置部署到 `~/.codex/`，8 个 MCP 服务器写进 `~/.claude.json`。
 
 适用于：
 - 想用 Claude Code 但屁都不懂、不知从哪入手的小白
@@ -22,36 +22,36 @@
 
 ### 🚀 一键安装（推荐，不用克隆仓库）
 
-**最简单：去 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest) 下载一个文件，双击。**
+**最简单：去 [Releases 页面](https://github.com/liujiarui0918/claude-code-codex-strongest/releases/latest) 下载一个文件，双击。**
 
 #### Windows (Win 10/11)
 
-1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest)，下载 **`install-windows.bat`**
+1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-codex-strongest/releases/latest)，下载 **`install-windows.bat`**
 2. **双击它**（若 SmartScreen 拦截：点"更多信息"→"仍要运行"）
-3. 等它自动装完（VS Code、Claude Code、cc-switch 等）——**不再有填 key 的弹窗**
+3. 等它自动装完（VS Code、Windows VS Code desktop shortcut、Claude Code CLI、anthropic.claude-code VS Code extension、Codex CLI、openai.chatgpt VS Code extension、cc-switch 等）——**不再有填 key 的弹窗**
 4. 装完会**自动打开 cc-switch**：点 Add Provider 填 API key + Base URL（选 Claude/Anthropic 预设，或你的中转站；gpt/OpenAI 格式中转站也行）→ 点 Enable
-5. 打开 VS Code，`Ctrl+Shift+P` → 输入 `Claude Code: Open Chat`
+5. 运行 `codex login` 登录 Codex；打开 VS Code，`Ctrl+Shift+P` → 输入 `Claude Code: Open Chat`，或在终端跑 `claude` / `codex`
 
 > 前提：Win11 自带 winget；Win10 若没有，去 Microsoft Store 装一下 "App Installer"。
 
 #### macOS (12 Monterey 及以上)
 
-1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-strongest/releases/latest)，下载 **`install-macos.command`**
+1. 打开 [Releases 页面](https://github.com/liujiarui0918/claude-code-codex-strongest/releases/latest)，下载 **`install-macos.command`**
 2. **双击它**（若被拦：右键 → 打开，或"系统设置 → 隐私与安全性 → 仍要打开"）
-3. 等它自动装完（含 cc-switch）——**不再有填 key 的弹窗**
+3. 等它自动装完（含 Claude Code CLI、anthropic.claude-code VS Code extension、Codex CLI、openai.chatgpt VS Code extension、cc-switch 和 Claude Code Codex Strongest / claude-code-codex-strongest 配置）——**不再有填 key 的弹窗**
 4. 装完会**自动打开 cc-switch**：Add Provider 填 API key + Base URL（Claude/Anthropic 预设，或你的中转站；gpt/OpenAI 也行）→ Enable
-5. 然后用 VS Code 或终端跑 `claude`
+5. 运行 `codex login` 登录 Codex；然后用 VS Code 或终端跑 `claude` / `codex`
 
 #### 或者：一行命令（给会用终端的人）
 
 ```powershell
 # Windows PowerShell
-irm https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.ps1 | iex
 ```
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.sh | bash
 ```
 
 > **国内用户注意**：以上都从 GitHub 下载，**需要梯子**。下载失败基本都是网络问题，开 VPN 重试。
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 # macOS
 bash install/install-macos.sh --reset
 # 一行命令版
-curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.sh | bash -s -- --reset
+curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.sh | bash -s -- --reset
 ```
 
 > 普通重装（不加 `-Reset`）也是安全的：会把已存在的 `~/.claude` 和 `~/.claude.json` **自动备份**到 `.bak.<时间戳>` 再覆盖。`-Reset` 是"彻底归零"——连扩展和登录都重置，适合修坏掉的环境。
@@ -78,9 +78,10 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 
 | 工具 | Windows 渠道 | macOS 渠道 |
 |------|-------------|-----------|
-| VS Code | winget `Microsoft.VisualStudioCode` | brew `--cask visual-studio-code` |
-| Claude Code 官方插件 | `code --install-extension anthropic.claude-code` | 同 |
+| VS Code | winget `Microsoft.VisualStudioCode` + Windows VS Code desktop shortcut | brew `--cask visual-studio-code` |
+| VS Code 扩展 | `code --install-extension anthropic.claude-code`; `openai.chatgpt`; `MS-CEINTL.vscode-language-pack-zh-hans`; `cweijan.vscode-office` | 同 |
 | Claude Code CLI | npm `@anthropic-ai/claude-code` | 同 |
+| Codex CLI | npm `@openai/codex`（装完运行 `codex login`） | 同 |
 | Git | winget `Git.Git` | brew `git` |
 | Node.js LTS | winget `OpenJS.NodeJS` | brew `node` |
 | uv (Python 包管理) | winget `astral-sh.uv` | `curl ...astral.sh/uv/install.sh` |
@@ -90,6 +91,7 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 - `~/.claude/`：skills / agents / commands / hooks / docs / output-styles 全套
 - `~/.claude/settings.json`：自动生成（hook 路径等填好，UTF-8 无 BOM；API key/URL 默认交给 cc-switch 配，除非用 `--token` 预填）
 - `~/.claude.json`：写入 8 个 MCP 服务器（Windows 用 `cmd /c` 包装，macOS 直连）
+- `~/.codex/`：部署 **Claude Code Codex Strongest / claude-code-codex-strongest** 安全模板（`AGENTS.md` / `config.toml` / `.gitignore`），不复制 `auth.json`；装完运行 `codex login`
 - 已存在的配置自动备份到 `.bak.<时间戳>`
 
 ### 功能预览
@@ -140,6 +142,12 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 - **国内中转站**：填中转商给的 token + base URL（cc-switch 内置预设；gpt/OpenAI 格式中转站也支持）
 - **想跳过 cc-switch**：用 `--token`(+ `--url`)把凭证预写进 settings.json，或 `--no-cc-switch` 后自己配
 
+> 💡 **哪里找便宜好用的中转站？** 这里有一份全网实时更新的低价高质量 API 中转站价格表：[📊 API 中转站价格汇总表](https://docs.qq.com/sheet/DWFhhV3pMVnJGZXpO?tab=000001)（作者持续维护）
+>
+> 💡 **公益站推荐**：[anyrouter](https://anyrouter.top/register?aff=rQEI) — 每天免费赠送 $25 Claude Opus 4.8 额度，注册即用。
+
+**👉 小白完整使用教程（中转站 + cc-switch 配置 + Claude Code 工作流）：[docs/guide-for-beginners.md](docs/guide-for-beginners.md)**
+
 #### 模型名 / 用 GPT、DeepSeek 等别家模型
 - **在 cc-switch 里选模型（推荐）**：每个 Provider 可设模型名，还能按 Opus/Sonnet/Haiku 分级映射。
 - **或用 `--model` 标志**（脚本化安装）：会把 `ANTHROPIC_MODEL` 和 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 都设成它，这样**单模型中转站**（如只有 `deepseek-chat`）前台和后台调用都走它，不会因后台 Haiku 调用失败。
@@ -149,8 +157,8 @@ curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest
 
 #### 进阶：克隆仓库后本地运行
 ```powershell
-git clone https://github.com/liujiarui0918/claude-code-strongest.git
-cd claude-code-strongest
+git clone https://github.com/liujiarui0918/claude-code-codex-strongest.git
+cd claude-code-codex-strongest
 .\install\install-windows.ps1            # 或 bash install/install-macos.sh
 ```
 
@@ -169,6 +177,12 @@ cd claude-code-strongest
 .\install\install-windows.ps1 -ApiToken 'xxx' -BaseUrl 'https://relay.example.com' -Model 'deepseek-chat' -NonInteractive -Force
 ./install/install-macos.sh --token 'xxx' --url 'https://relay.example.com' --model 'deepseek-chat' --non-interactive --force
 ```
+
+### Claude Code Codex Strongest / claude-code-codex-strongest
+
+本项目还有一份面向 Codex CLI / VS Code 的适配配置，命名为 **Claude Code Codex Strongest / claude-code-codex-strongest**，默认放在 `C:\Users\liujiarui\.codex`。它围绕 `@openai/codex` 和 VS Code 插件 `openai.chatgpt` 整理入口：`AGENTS.md` 作为 Codex 可读的项目规则入口，`config.toml` 负责模型、沙箱与 MCP servers 配置。
+
+Claude Code Codex Strongest 不会复制 Claude 登录态、token、sessions、logs 或缓存；它保留本仓库的 Claude skills / agents / commands / docs 作为 Codex 可读的规则库和工作流参考，让 Codex 在不执行 Claude 专属 hook 的前提下复用同一套工程实践。
 
 ### 文件结构
 
@@ -216,7 +230,7 @@ rm -rf ~/.claude
 
 ### 反馈 / Issue
 
-发 Issue：[github.com/liujiarui0918/claude-code-strongest/issues](https://github.com/liujiarui0918/claude-code-strongest/issues)
+发 Issue：[github.com/liujiarui0918/claude-code-codex-strongest/issues](https://github.com/liujiarui0918/claude-code-codex-strongest/issues)
 
 ### License
 
@@ -228,28 +242,28 @@ rm -rf ~/.claude
 
 ### What is this
 
-A **batteries-included, opinionated Claude Code setup** with **one-click, no-clone installers** for Windows and macOS.
+A **batteries-included, opinionated Claude Code + Codex setup** with **one-click, no-clone installers** for Windows and macOS.
 
-This repo bundles the author's full `~/.claude/` configuration — skills, subagents, commands, hooks, and MCP servers — refined over months on a daily-driver machine. The installers bootstrap everything from a blank machine: VS Code, the official Claude Code extension, the Claude Code CLI, Node.js, Git, PowerShell 7, and uv — then deploy the config to `~/.claude/` and 8 MCP servers into `~/.claude.json`.
+This repo bundles the author's full `~/.claude/` configuration — skills, subagents, commands, hooks, and MCP servers — refined over months on a daily-driver machine. The installers bootstrap everything from a blank machine: VS Code, the Claude Code CLI, the `anthropic.claude-code` VS Code extension, Codex CLI, and the `openai.chatgpt` VS Code extension, Node.js, Git, PowerShell 7, and uv — then deploy the config to `~/.claude/`, Claude Code Codex Strongest / claude-code-codex-strongest templates to `~/.codex/`, and 8 MCP servers into `~/.claude.json`.
 
 ### 🚀 Quick Start (no clone, no git)
 
-**Easiest: grab one file from the [latest release](https://github.com/liujiarui0918/claude-code-strongest/releases/latest) and double-click it.**
+**Easiest: grab one file from the [latest release](https://github.com/liujiarui0918/claude-code-codex-strongest/releases/latest) and double-click it.**
 
 - **Windows:** download `install-windows.bat` → double-click (if SmartScreen warns: "More info" → "Run anyway")
 - **macOS:** download `install-macos.command` → double-click (if blocked: right-click → Open)
 
-No credential popup — cc-switch installs and opens at the end; add your provider (API key + Base URL) there, then Enable. That's it.
+No credential popup — cc-switch installs and opens at the end; add your Claude provider (API key + Base URL) there, then Enable. For Codex, run `codex login`, then use `claude` or `codex` in your terminal.
 
 **Or one line in a terminal:**
 
 ```powershell
 # Windows PowerShell
-irm https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.ps1 | iex
 ```
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.sh | bash
 ```
 
 > Everything downloads from GitHub. Behind the Great Firewall? Enable a VPN and retry.
@@ -263,15 +277,17 @@ Machine already has VS Code / Claude Code with old or broken config? Use **reset
 ```
 ```bash
 bash install/install-macos.sh --reset
-curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.sh | bash -s -- --reset
+curl -fsSL https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.sh | bash -s -- --reset
 ```
 
 A normal re-install (without `-Reset`) is also safe: it auto-backs-up existing config to `.bak.<timestamp>` before overwriting.
 
 ### What you get
 
-- **VS Code** + official **Claude Code extension** (`anthropic.claude-code`)
+- **VS Code** + Windows VS Code desktop shortcut + official **Claude Code extension** (`anthropic.claude-code`) + official **Codex / ChatGPT extension** (`openai.chatgpt`) + Chinese language pack (`MS-CEINTL.vscode-language-pack-zh-hans`) + Office document preview (`cweijan.vscode-office`)
 - **Claude Code CLI** (`claude` on PATH)
+- **Codex CLI** (`@openai/codex`; run `codex login`, then `codex`)
+- **Claude Code Codex Strongest / claude-code-codex-strongest config** deployed to `~/.codex/` without auth/runtime files
 - **33 skills** auto-triggered on intent ("debug this" → `systematic-debugging`)
 - **22 specialized subagents** for parallel research, review, planning, etc.
 - **25 slash commands** (`/plan`, `/tdd`, `/review`, `/debug`, `/verify`, ...)
@@ -295,4 +311,4 @@ A normal re-install (without `-Reset`) is also safe: it auto-backs-up existing c
 
 ### Contributing
 
-Issues and PRs welcome at [github.com/liujiarui0918/claude-code-strongest](https://github.com/liujiarui0918/claude-code-strongest).
+Issues and PRs welcome at [github.com/liujiarui0918/claude-code-codex-strongest](https://github.com/liujiarui0918/claude-code-codex-strongest).

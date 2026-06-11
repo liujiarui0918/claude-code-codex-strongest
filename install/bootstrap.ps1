@@ -1,7 +1,7 @@
 #requires -version 5.1
 <#
 .SYNOPSIS
-    No-clone bootstrap for claude-code-strongest (Windows).
+    No-clone bootstrap for claude-code-codex-strongest (Windows).
 
 .DESCRIPTION
     Downloads the repository as a zip (no git required), extracts it to a temp
@@ -9,7 +9,7 @@
     to the installer.
 
     One-liner (PowerShell):
-      irm https://raw.githubusercontent.com/liujiarui0918/claude-code-strongest/main/install/bootstrap.ps1 | iex
+      irm https://raw.githubusercontent.com/liujiarui0918/claude-code-codex-strongest/main/install/bootstrap.ps1 | iex
 
     With arguments (download then run):
       .\bootstrap.ps1 -Reset
@@ -24,7 +24,7 @@ param([Parameter(ValueFromRemainingArguments = $true)] $PassThru)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
-$repo = 'liujiarui0918/claude-code-strongest'
+$repo = 'liujiarui0918/claude-code-codex-strongest'
 $ref  = if ($env:CCS_REF) { $env:CCS_REF } else { 'main' }
 
 # Version tags (v1.0.0 / 1.0.0) live under refs/tags; everything else is a branch.
@@ -34,7 +34,7 @@ if ($ref -match '^v?\d') {
     $zipUrl = "https://github.com/$repo/archive/refs/heads/$ref.zip"
 }
 
-Write-Host ">>> Claude Code Strongest bootstrap (ref: $ref)" -ForegroundColor Cyan
+Write-Host ">>> Claude Code Codex Strongest bootstrap (ref: $ref)" -ForegroundColor Cyan
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $tmp = Join-Path $env:TEMP ('ccs-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -53,7 +53,7 @@ try {
 Write-Host '    Extracting...' -ForegroundColor Gray
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
 
-$extracted = @(Get-ChildItem -Path $tmp -Directory -Filter 'claude-code-strongest-*')[0]
+$extracted = @(Get-ChildItem -Path $tmp -Directory -Filter 'claude-code-codex-strongest-*')[0]
 if (-not $extracted) {
     Write-Host '    Extraction failed: repo folder not found.' -ForegroundColor Red
     exit 1

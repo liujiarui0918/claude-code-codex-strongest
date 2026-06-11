@@ -1,0 +1,13 @@
+# Safe Codex template config for claude-code-codex-strongest.
+# Authentication is intentionally omitted. Run `codex login` after install.
+
+model = "gpt-5-codex"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[tools]
+web_search = true
+
+[projects]
+# Add project trust entries here if desired, for example:
+# "/path/to/project" = { trust_level = "trusted" }

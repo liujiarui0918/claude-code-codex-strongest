@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Claude Code Strongest - One-Click Setup (macOS)
+# Claude Code Codex Strongest - One-Click Setup (macOS)
 #
-# Installs:  Homebrew, VS Code, Claude Code CLI, official VS Code extension,
-#            git, Node.js, PowerShell 7, uv (for Python MCP servers)
+# Installs:  Homebrew, VS Code, Claude Code CLI, Codex CLI, official VS Code
+#            extensions, git, Node.js, PowerShell 7, uv (for Python MCP servers)
 # Deploys:   ~/.claude/ — 33 skills / 22 agents / 25 commands / 12 hooks
-#            + 8 MCP servers into ~/.claude.json
+#            + Claude Code Codex Strongest templates in ~/.codex + 8 MCP servers into ~/.claude.json
 #
 # Usage:     ./install-macos.sh                   # no popup; opens cc-switch to enter your key
 #            ./install-macos.sh --reset
@@ -20,6 +20,7 @@ set -euo pipefail
 # Config
 # ----------------------------------------------------------------------------
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 API_TOKEN=""
 BASE_URL=""
 MODEL=""
@@ -54,11 +55,11 @@ log_info() { printf "${C_GRAY}    %s${C_RESET}\n" "$*"; }
 show_welcome() {
     printf "\n"
     printf "${C_MAGENTA}+------------------------------------------------------------+${C_RESET}\n"
-    printf "${C_MAGENTA}|     Claude Code Strongest - One-Click Setup (macOS)        |${C_RESET}\n"
+    printf "${C_MAGENTA}|     Claude Code Codex Strongest - One-Click Setup (macOS)        |${C_RESET}\n"
     printf "${C_MAGENTA}|                                                            |${C_RESET}\n"
-    printf "${C_MAGENTA}|   Installs: VS Code + Claude Code CLI + extension          |${C_RESET}\n"
-    printf "${C_MAGENTA}|   Deploys:  33 skills / 22 agents / 25 commands /          |${C_RESET}\n"
-    printf "${C_MAGENTA}|             12 hooks / 8 MCP servers                       |${C_RESET}\n"
+    printf "${C_MAGENTA}|   Installs: Claude Code CLI + anthropic.claude-code        |${C_RESET}\n"
+    printf "${C_MAGENTA}|             Codex CLI + openai.chatgpt + cc-switch         |${C_RESET}\n"
+    printf "${C_MAGENTA}|   Deploys:  33 skills / 22 agents / 25 commands / 8 MCPs  |${C_RESET}\n"
     printf "${C_MAGENTA}+------------------------------------------------------------+${C_RESET}\n\n"
 }
 
@@ -103,6 +104,7 @@ while [ $# -gt 0 ]; do
         --model)            MODEL="$2";     shift 2 ;;
         --timezone)         TIMEZONE="$2";  shift 2 ;;
         --claude-home)      CLAUDE_HOME="$2"; shift 2 ;;
+        --codex-home)       CODEX_HOME="$2"; shift 2 ;;
         --reset)            RESET=1;           shift ;;
         --no-cc-switch)     INSTALL_CC_SWITCH=0; shift ;;
         --non-interactive)  NON_INTERACTIVE=1; shift ;;
@@ -121,6 +123,7 @@ Options:
                           (e.g. deepseek-chat, gpt-4o). Empty = Claude Code defaults.
   --timezone TZ           IANA timezone for the 'time' MCP (default Asia/Shanghai)
   --claude-home PATH      Override ~/.claude install location
+  --codex-home PATH       Override ~/.codex install location
   --reset                 Clean reinstall: back up + remove old config, re-login, reinstall extension
   --no-cc-switch          Skip cc-switch (installed by default: multi-provider switcher GUI via Homebrew)
   --non-interactive       Do not auto-open cc-switch when done (for CI/scripted installs)
@@ -258,6 +261,31 @@ install_claude_cli() {
     fi
 }
 
+install_codex_cli() {
+    if command_exists codex; then
+        log_ok "Codex CLI already installed"
+        return 0
+    fi
+    if ! command_exists npm; then
+        log_warn "npm not available; skipping Codex CLI. Re-run after Node installs."
+        return 0
+    fi
+    log_step "Installing Codex CLI via npm"
+    if [ $DRY_RUN -eq 1 ]; then
+        log_info "[dry-run] would run: npm install -g @openai/codex"
+        return 0
+    fi
+    if npm install -g @openai/codex 2>&1 | tail -3; then
+        if command_exists codex; then
+            log_ok "Codex CLI installed"
+        else
+            log_warn "npm reported success but 'codex' not on PATH (try opening a new terminal)"
+        fi
+    else
+        log_warn "Codex npm install failed; install manually: npm install -g @openai/codex"
+    fi
+}
+
 install_vscode_ext() {
     ensure_code_on_path || true
     if ! command_exists code; then
@@ -265,16 +293,25 @@ install_vscode_ext() {
         log_info "In VS Code run: Cmd+Shift+P -> 'Shell Command: Install code command in PATH', then re-run."
         return 0
     fi
-    log_step "Installing VS Code extension: anthropic.claude-code"
-    if [ $DRY_RUN -eq 1 ]; then
-        log_info "[dry-run] would run: code --install-extension anthropic.claude-code --force"
-        return 0
-    fi
-    if code --install-extension anthropic.claude-code --force >/dev/null 2>&1; then
-        log_ok "VS Code extension installed"
-    else
-        log_warn "Extension install failed; install manually from VS Code Extensions panel"
-    fi
+
+    local ext
+    for ext in \
+        anthropic.claude-code \
+        openai.chatgpt \
+        MS-CEINTL.vscode-language-pack-zh-hans \
+        cweijan.vscode-office
+    do
+        log_step "Installing VS Code extension: $ext"
+        if [ $DRY_RUN -eq 1 ]; then
+            log_info "[dry-run] would run: code --install-extension $ext --force"
+            continue
+        fi
+        if code --install-extension "$ext" --force >/dev/null 2>&1; then
+            log_ok "VS Code extension installed: $ext"
+        else
+            log_warn "Extension install failed: $ext; install manually from VS Code Extensions panel"
+        fi
+    done
 }
 
 install_cc_switch() {
@@ -309,6 +346,7 @@ install_prerequisites() {
 
     install_uv
     install_claude_cli
+    install_codex_cli
     install_vscode_ext
 
     printf "\n"
@@ -477,6 +515,28 @@ deploy_mcp() {
     fi
 }
 
+deploy_codex_config() {
+    log_step "Deploying Claude Code Codex Strongest config to $CODEX_HOME"
+    local src="$REPO_ROOT/.codex"
+    if [ ! -d "$src" ]; then
+        log_warn "Codex template not found ($src); skipping Codex config deployment."
+        return 0
+    fi
+    if [ $DRY_RUN -eq 1 ]; then
+        log_info "[dry-run] would copy Claude Code Codex Strongest templates from $src to $CODEX_HOME"
+        return 0
+    fi
+    mkdir -p "$CODEX_HOME"
+    local file
+    for file in AGENTS.md config.toml .gitignore README.md; do
+        if [ -f "$src/$file" ]; then
+            cp "$src/$file" "$CODEX_HOME/$file"
+            log_ok "Codex template deployed: $CODEX_HOME/$file"
+        fi
+    done
+    log_info "Codex auth/runtime files are intentionally not copied. Run 'codex login' manually after install."
+}
+
 # ----------------------------------------------------------------------------
 # Verify
 # ----------------------------------------------------------------------------
@@ -504,6 +564,10 @@ verify_install() {
     check "agents/ has >=20 entries"  "[ \$(ls -1 '$CLAUDE_HOME/agents'/*.md 2>/dev/null | wc -l | tr -d ' ') -ge 20 ]"
     check "commands/ has >=20"        "[ \$(ls -1 '$CLAUDE_HOME/commands'/*.md 2>/dev/null | wc -l | tr -d ' ') -ge 20 ]"
     check "hooks/ has >=12 .ps1"      "[ \$(ls -1 '$CLAUDE_HOME/hooks'/*.ps1 2>/dev/null | wc -l | tr -d ' ') -ge 12 ]"
+    check "Codex AGENTS.md exists"     "[ -f '$CODEX_HOME/AGENTS.md' ]"
+    check "Codex config.toml exists"   "[ -f '$CODEX_HOME/config.toml' ]"
+    check "Codex .gitignore protects auth" "grep -q 'auth\.json' '$CODEX_HOME/.gitignore'"
+    check "Codex VS Code extension installed" "if command -v code >/dev/null 2>&1; then code --list-extensions | grep -qi '^openai\.chatgpt$'; else exit 1; fi"
     check "~/.claude.json 8 MCPs"     "node -e 'const j=JSON.parse(require(\"fs\").readFileSync(process.env.HOME+\"/.claude.json\",\"utf8\"));process.exit(Object.keys(j.mcpServers||{}).length>=8?0:1)'"
 
     if [ $fail -gt 0 ]; then
@@ -519,16 +583,19 @@ show_success() {
     printf "${C_GREEN}${C_BOLD}|             INSTALLATION COMPLETE!                         |${C_RESET}\n"
     printf "${C_GREEN}${C_BOLD}+============================================================+${C_RESET}\n\n"
     printf "  Claude Code config installed at: ${C_BOLD}%s${C_RESET}\n" "$CLAUDE_HOME"
+    printf "  Claude Code Codex Strongest config installed at: ${C_BOLD}%s${C_RESET}\n" "$CODEX_HOME"
     printf "  8 MCP servers configured in ~/.claude.json\n\n"
     printf "  ${C_YELLOW}IMPORTANT - set up your API key in cc-switch first:${C_RESET}\n"
     printf "    1. cc-switch should have opened. If not, open it from Launchpad / Applications.\n"
     printf "    2. Click \"Add Provider\": enter your API key + Base URL\n"
     printf "       (pick the Claude/Anthropic preset, or your relay -- gpt/OpenAI relays work too).\n"
     printf "    3. Click \"Enable\" -- cc-switch writes the config for Claude Code.\n\n"
-    printf "  ${C_YELLOW}Then use Claude Code:${C_RESET}\n"
-    printf "    - VS Code: ${C_BOLD}Cmd+Shift+P${C_RESET} -> \"Claude Code: Open Chat\"\n"
-    printf "    - Terminal: ${C_BOLD}claude${C_RESET}\n\n"
-    printf "  ${C_CYAN}Documentation: https://github.com/liujiarui0918/claude-code-strongest${C_RESET}\n\n"
+    printf "  ${C_YELLOW}Then set up Codex:${C_RESET}\n"
+    printf "    - Terminal: ${C_BOLD}codex login${C_RESET}\n\n"
+    printf "  ${C_YELLOW}Then use Claude Code / Codex:${C_RESET}\n"
+    printf "    - VS Code: ${C_BOLD}Cmd+Shift+P${C_RESET} -> \"Claude Code: Open Chat\" or open the Codex extension\n"
+    printf "    - Terminal: ${C_BOLD}claude${C_RESET} or ${C_BOLD}codex${C_RESET}\n\n"
+    printf "  ${C_CYAN}Documentation: https://github.com/liujiarui0918/claude-code-codex-strongest${C_RESET}\n\n"
 }
 
 # ----------------------------------------------------------------------------
@@ -564,6 +631,7 @@ main() {
     deploy_repo
     render_settings
     deploy_mcp
+    deploy_codex_config
 
     if [ $DRY_RUN -eq 0 ]; then
         verify_install

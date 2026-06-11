@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Claude Code Strongest - One-Click Installer (macOS)
+# Claude Code Codex Strongest - One-Click Installer (macOS)
 #
 # Double-click this file in Finder. If macOS blocks it:
 #   right-click > Open, or System Settings > Privacy & Security > "Open Anyway".
 # ============================================================================
 set -e
 echo "============================================================"
-echo "   Claude Code Strongest - One-Click Installer (macOS)"
+echo "   Claude Code Codex Strongest - One-Click Installer (macOS)"
 echo "============================================================"
 echo
 echo "This downloads the latest setup and installs everything:"
-echo "  VS Code + Claude Code + cc-switch + 33 skills / 22 agents / 8 MCPs"
+echo "  VS Code + Claude Code CLI + anthropic.claude-code VS Code extension + Codex CLI + openai.chatgpt VS Code extension + cc-switch + Claude Code Codex Strongest / claude-code-codex-strongest config + 33 skills / 22 agents / 8 MCPs"
 echo
 echo "No API-key box: when it finishes, cc-switch opens so you enter your key there."
 echo
 
 TMP="$(mktemp -d)"
-URL="https://github.com/liujiarui0918/claude-code-strongest/archive/refs/heads/main.tar.gz"
+URL="https://github.com/liujiarui0918/claude-code-codex-strongest/archive/refs/heads/main.tar.gz"
 
 echo "Downloading..."
 if ! curl -fsSL "$URL" -o "$TMP/r.tar.gz"; then
@@ -27,7 +27,7 @@ fi
 
 echo "Extracting..."
 tar -xzf "$TMP/r.tar.gz" -C "$TMP"
-DIR="$(find "$TMP" -maxdepth 1 -type d -name 'claude-code-strongest-*' | head -1)"
+DIR="$(find "$TMP" -maxdepth 1 -type d -name 'claude-code-codex-strongest-*' | head -1)"
 [ -n "$DIR" ] || { echo "Extract failed."; exit 1; }
 
 bash "$DIR/install/install-macos.sh" "$@"

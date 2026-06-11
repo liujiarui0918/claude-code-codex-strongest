@@ -1,0 +1,22 @@
+# Codex auth and credentials - never commit or copy into templates
+auth.json
+.credentials.json
+*.token
+*.key
+.env
+.env.*
+
+# Runtime state
+sessions/
+history/
+logs/
+log/
+tmp/
+temp/
+cache/
+runtime/
+shell-snapshots/
+tasks/
+teams/
+backups/
+*.log

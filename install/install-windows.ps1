@@ -1,12 +1,13 @@
 #requires -version 5.1
 <#
 .SYNOPSIS
-    One-click installer for claude-code-strongest on Windows.
+    One-click installer for claude-code-codex-strongest on Windows.
 
 .DESCRIPTION
-    Installs VS Code, Claude Code CLI, official VS Code extension, and deploys
-    the full ~/.claude/ configuration (skills, agents, commands, hooks) plus the
-    8 MCP servers into ~/.claude.json. Also installs cc-switch (a multi-provider /
+    Installs VS Code, Claude Code CLI, Codex CLI, official VS Code extensions, and deploys
+    the full ~/.claude/ configuration (skills, agents, commands, hooks) plus Claude Code Codex Strongest
+    templates to ~/.codex/ and the 8 MCP servers into ~/.claude.json. Also installs
+    cc-switch (a multi-provider /
     multi-model GUI) and opens it at the end so you enter your API key / provider
     there -- there is NO credential popup. Use -NoCcSwitch to skip cc-switch.
 
@@ -62,6 +63,7 @@
 [CmdletBinding()]
 param(
     [string]$ClaudeHome   = '',
+    [string]$CodexHome    = '',
     [string]$ApiToken     = '',
     [string]$BaseUrl      = '',
     [string]$Model        = '',
@@ -100,6 +102,59 @@ function Refresh-Path {
     if ($user) { $env:Path = "$machine;$user" } else { $env:Path = $machine }
 }
 
+# Create (or refresh) a Desktop .lnk via WScript.Shell. Idempotent: re-running overwrites
+# the same .lnk instead of duplicating it. We create shortcuts ourselves because winget's
+# VS Code (Inno Setup) only drops a desktop icon when the 'desktopicon' task is selected --
+# and it skips that task entirely when VS Code is already installed. cc-switch gets one for
+# free (its NSIS installer always makes one); this brings VS Code to parity.
+function New-DesktopShortcut {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$TargetPath,
+        [string]$Arguments  = '',
+        [string]$WorkingDir = ''
+    )
+    if (-not (Test-Path $TargetPath)) {
+        Write-Warn "Skipping '$Name' shortcut: target not found ($TargetPath)"
+        return $false
+    }
+    try {
+        $desktop = [Environment]::GetFolderPath('DesktopDirectory')
+        if (-not $desktop) { $desktop = Join-Path $env:USERPROFILE 'Desktop' }
+        $lnk   = Join-Path $desktop "$Name.lnk"
+        $shell = New-Object -ComObject WScript.Shell
+        $sc    = $shell.CreateShortcut($lnk)
+        $sc.TargetPath       = $TargetPath
+        $sc.WorkingDirectory = if ($WorkingDir) { $WorkingDir } else { Split-Path -Parent $TargetPath }
+        if ($Arguments) { $sc.Arguments = $Arguments }
+        $sc.IconLocation = "$TargetPath,0"
+        $sc.Save()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($shell) | Out-Null
+        Write-Ok "Desktop shortcut: $lnk"
+        return $true
+    } catch {
+        Write-Warn "Could not create '$Name' desktop shortcut: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# Locate Code.exe across system-wide and user-scope installs (winget may produce either),
+# falling back to resolving the `code` CLI shim (<install>\bin\code.cmd -> ..\Code.exe).
+function Find-VSCodeExe {
+    $bases = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ }
+    $candidates = @()
+    foreach ($b in $bases) { $candidates += (Join-Path $b 'Microsoft VS Code\Code.exe') }
+    $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code\Code.exe')
+    foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
+
+    $cmd = Get-Command code -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+        $exe = Join-Path (Split-Path -Parent (Split-Path -Parent $cmd.Source)) 'Code.exe'
+        if (Test-Path $exe) { return $exe }
+    }
+    return $null
+}
+
 # Write UTF-8 WITHOUT BOM. Claude Code parses ~/.claude.json and settings.json with
 # Node's JSON.parse, which throws on a leading BOM. PS 5.1's Set-Content -Encoding UTF8
 # emits a BOM, so we must use the .NET writer with UTF8Encoding($false).
@@ -126,11 +181,11 @@ function Show-Welcome {
     $line = '+' + ('-' * 60) + '+'
     Write-Host ''
     Write-Host $line -ForegroundColor Magenta
-    Write-Host '|     Claude Code Strongest - One-Click Setup (Windows)     |' -ForegroundColor Magenta
+    Write-Host '|  Claude Code Codex Strongest - One-Click Setup (Windows)  |' -ForegroundColor Magenta
     Write-Host '|                                                            |' -ForegroundColor Magenta
-    Write-Host '|   Installs: VS Code + Claude Code CLI + extension          |' -ForegroundColor Magenta
-    Write-Host '|   Deploys:  33 skills / 22 agents / 25 commands /          |' -ForegroundColor Magenta
-    Write-Host '|             12 hooks / 8 MCP servers                       |' -ForegroundColor Magenta
+    Write-Host '|   Installs: Claude Code CLI + anthropic.claude-code        |' -ForegroundColor Magenta
+    Write-Host '|             Codex CLI + openai.chatgpt + cc-switch         |' -ForegroundColor Magenta
+    Write-Host '|   Deploys:  33 skills / 22 agents / 25 commands / 8 MCPs  |' -ForegroundColor Magenta
     Write-Host $line -ForegroundColor Magenta
     Write-Host ''
 }
@@ -223,7 +278,7 @@ function Install-Prerequisites {
     }
 
     # VS Code with full Inno Setup options
-    $vscodeOverride = '/VERYSILENT /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath'
+    $vscodeOverride = '/VERYSILENT /SP- /MERGETASKS=!runcode,desktopicon,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath'
     Invoke-Winget -Id 'Microsoft.VisualStudioCode' -Friendly 'VS Code' -Override $vscodeOverride | Out-Null
 
     Invoke-Winget -Id 'Git.Git'         -Friendly 'Git'         | Out-Null
@@ -255,19 +310,67 @@ function Install-Prerequisites {
         Write-Warn 'npm not on PATH; skipping Claude Code CLI. Re-run after Node installs.'
     }
 
-    # VS Code extension
-    Write-Step 'Installing Claude Code VS Code extension'
-    if (Test-Command 'code') {
+    # npm-based: Codex CLI (authentication stays user-owned; run `codex login` after install).
+    Write-Step 'Installing Codex CLI (npm)'
+    if (Test-Command 'npm') {
         try {
-            & code --install-extension anthropic.claude-code --force 2>&1 | Out-Null
-            Write-Ok 'VS Code extension installed: anthropic.claude-code'
+            & npm install -g '@openai/codex' 2>&1 | Out-Null
+            if (Test-Command 'codex') {
+                Write-Ok 'Codex CLI installed'
+            } else {
+                Refresh-Path
+                if (Test-Command 'codex') {
+                    Write-Ok 'Codex CLI installed (after PATH refresh)'
+                } else {
+                    Write-Warn 'npm reported success but `codex` not on PATH. Open a NEW terminal after install.'
+                }
+            }
         } catch {
-            Write-Warn "code --install-extension failed: $($_.Exception.Message)"
-            Write-Info 'Install manually in VS Code: Extensions panel > search "Claude Code" by Anthropic'
+            Write-Warn "Codex npm install failed: $($_.Exception.Message)"
+            Write-Info 'You can install manually later: npm install -g @openai/codex'
         }
     } else {
-        Write-Warn '`code` CLI not on PATH; VS Code extension skipped.'
-        Write-Info 'After installing VS Code, run: code --install-extension anthropic.claude-code'
+        Write-Warn 'npm not on PATH; skipping Codex CLI. Re-run after Node installs.'
+    }
+
+    # VS Code extensions
+    $vscodeExtensions = @(
+        'anthropic.claude-code',
+        'openai.chatgpt',
+        'MS-CEINTL.vscode-language-pack-zh-hans',
+        'cweijan.vscode-office'
+    )
+    Write-Step 'Installing VS Code extensions'
+    if (Test-Command 'code') {
+        foreach ($ext in $vscodeExtensions) {
+            try {
+                & code --install-extension $ext --force | Out-Null
+                $codeExit = $LASTEXITCODE
+                if ($codeExit -eq 0) {
+                    Write-Ok "VS Code extension installed: $ext"
+                } else {
+                    Write-Warn "code --install-extension $ext exited with code $codeExit"
+                    Write-Info "Install manually in VS Code: code --install-extension $ext"
+                }
+            } catch {
+                Write-Warn "code --install-extension $ext failed: $($_.Exception.Message)"
+                Write-Info "Install manually in VS Code: code --install-extension $ext"
+            }
+        }
+    } else {
+        Write-Warn '`code` CLI not on PATH; VS Code extensions skipped.'
+        foreach ($ext in $vscodeExtensions) {
+            Write-Info "After installing VS Code, run: code --install-extension $ext"
+        }
+    }
+
+    # Desktop shortcut for VS Code (parity with cc-switch, whose installer makes one).
+    Write-Step 'Creating VS Code desktop shortcut'
+    $codeExe = Find-VSCodeExe
+    if ($codeExe) {
+        New-DesktopShortcut -Name 'Visual Studio Code' -TargetPath $codeExe | Out-Null
+    } else {
+        Write-Warn 'Code.exe not found; skipping VS Code desktop shortcut.'
     }
 
     Write-Host ''
@@ -341,8 +444,21 @@ function Backup-Existing {
     $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
     $backup = "$Path.bak.$ts"
     Write-Step "Backing up existing $Path -> $backup"
-    Move-Item -Path $Path -Destination $backup -Force
-    Write-Ok "Backup at $backup"
+    try {
+        Move-Item -Path $Path -Destination $backup -Force
+        Write-Ok "Backup at $backup"
+        return
+    } catch {
+        Write-Warn "Original directory is in use and was copied instead of moved: $($_.Exception.Message)"
+    }
+
+    New-Item -ItemType Directory -Path $backup -Force | Out-Null
+    $rcArgs = @($Path, $backup, '/E', '/XJ', '/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS', '/NP')
+    & robocopy @rcArgs | Out-Null
+    if ($LASTEXITCODE -gt 7) {
+        throw "backup robocopy failed with exit code $LASTEXITCODE"
+    }
+    Write-Ok "Backup copy at $backup"
 }
 
 function Deploy-Repo {
@@ -462,22 +578,59 @@ function Deploy-MCP {
     Write-Ok "Configured $count MCP servers in $cfgPath"
 }
 
+function Deploy-CodexConfig {
+    param([string]$RepoRoot, [string]$CodexHome)
+    Write-Step "Deploying Claude Code Codex Strongest config to $CodexHome"
+
+    $src = Join-Path $RepoRoot '.codex'
+    if (-not (Test-Path $src)) {
+        Write-Warn "Codex template not found ($src); skipping Codex config deployment."
+        return
+    }
+
+    New-Item -ItemType Directory -Path $CodexHome -Force | Out-Null
+    $safeFiles = @('AGENTS.md', 'config.toml', '.gitignore', 'README.md')
+    foreach ($file in $safeFiles) {
+        $from = Join-Path $src $file
+        if (-not (Test-Path $from)) { continue }
+        $to = Join-Path $CodexHome $file
+        Copy-Item -LiteralPath $from -Destination $to -Force
+        Write-Ok "Codex template deployed: $to"
+    }
+    Write-Info 'Codex auth/runtime files are intentionally not copied. Run `codex login` manually after install.'
+}
+
 # ============================================================================
 # Verify
 # ============================================================================
 function Verify-Install {
-    param([string]$ClaudeHome)
+    param([string]$ClaudeHome, [string]$CodexHome)
     Write-Step 'Phase 5/5: Verifying install'
+    $expectedExtensions = @(
+        'anthropic.claude-code',
+        'openai.chatgpt',
+        'ms-ceintl.vscode-language-pack-zh-hans',
+        'cweijan.vscode-office'
+    )
+    $installedExtensions = $null
+    if (Test-Command 'code') {
+        try { $installedExtensions = @(& code --list-extensions | ForEach-Object { $_.ToLowerInvariant() }) } catch { $installedExtensions = $null }
+    }
     $checks = @(
-        @{ Name = 'settings.json exists';      Test = { Test-Path (Join-Path $ClaudeHome 'settings.json') } },
-        @{ Name = 'settings.json parses';      Test = { try { Get-Content (Join-Path $ClaudeHome 'settings.json') -Raw | ConvertFrom-Json | Out-Null; $true } catch { $false } } },
-        @{ Name = 'CLAUDE.md exists';          Test = { Test-Path (Join-Path $ClaudeHome 'CLAUDE.md') } },
-        @{ Name = 'docs/ has 4 files';         Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'docs') -File -ErrorAction SilentlyContinue).Count -ge 4 } },
-        @{ Name = 'skills/ has >= 30';         Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'skills') -Directory -ErrorAction SilentlyContinue).Count -ge 30 } },
-        @{ Name = 'agents/ has >= 20';         Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'agents') -Filter *.md -File -ErrorAction SilentlyContinue).Count -ge 20 } },
-        @{ Name = 'commands/ has >= 20';       Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'commands') -Filter *.md -File -ErrorAction SilentlyContinue).Count -ge 20 } },
-        @{ Name = 'hooks/ has >= 12 .ps1';     Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'hooks') -Filter *.ps1 -File -ErrorAction SilentlyContinue).Count -ge 12 } },
-        @{ Name = '~/.claude.json 8 MCPs';     Test = { try { $j = Get-Content (Join-Path $env:USERPROFILE '.claude.json') -Raw -Encoding UTF8 | ConvertFrom-Json; @($j.mcpServers.PSObject.Properties).Count -ge 8 } catch { $false } } }
+        @{ Name = 'settings.json exists';          Test = { Test-Path (Join-Path $ClaudeHome 'settings.json') } },
+        @{ Name = 'settings.json parses';          Test = { try { Get-Content (Join-Path $ClaudeHome 'settings.json') -Raw | ConvertFrom-Json | Out-Null; $true } catch { $false } } },
+        @{ Name = 'CLAUDE.md exists';              Test = { Test-Path (Join-Path $ClaudeHome 'CLAUDE.md') } },
+        @{ Name = 'docs/ has 4 files';             Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'docs') -File -ErrorAction SilentlyContinue).Count -ge 4 } },
+        @{ Name = 'skills/ has >= 30';             Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'skills') -Directory -ErrorAction SilentlyContinue).Count -ge 30 } },
+        @{ Name = 'agents/ has >= 20';             Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'agents') -Filter *.md -File -ErrorAction SilentlyContinue).Count -ge 20 } },
+        @{ Name = 'commands/ has >= 20';           Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'commands') -Filter *.md -File -ErrorAction SilentlyContinue).Count -ge 20 } },
+        @{ Name = 'hooks/ has >= 12 .ps1';         Test = { @(Get-ChildItem (Join-Path $ClaudeHome 'hooks') -Filter *.ps1 -File -ErrorAction SilentlyContinue).Count -ge 12 } },
+        @{ Name = 'Codex AGENTS.md exists';         Test = { Test-Path (Join-Path $CodexHome 'AGENTS.md') } },
+        @{ Name = 'Codex config.toml exists';       Test = { Test-Path (Join-Path $CodexHome 'config.toml') } },
+        @{ Name = 'Codex .gitignore protects auth'; Test = { try { (Get-Content (Join-Path $CodexHome '.gitignore') -Raw -Encoding UTF8) -match 'auth\.json' } catch { $false } } },
+        @{ Name = 'VS Code desktop shortcut exists'; Test = { Test-Path (Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Visual Studio Code.lnk') } },
+        @{ Name = 'VS Code extensions installed';  Test = { $installedExtensions -and @(Compare-Object -ReferenceObject $expectedExtensions -DifferenceObject $installedExtensions -PassThru | Where-Object { $expectedExtensions -contains $_ }).Count -eq 0 } },
+        @{ Name = '~/.claude.json 8 MCPs';         Test = { try { $j = Get-Content (Join-Path $env:USERPROFILE '.claude.json') -Raw -Encoding UTF8 | ConvertFrom-Json; @($j.mcpServers.PSObject.Properties).Count -ge 8 } catch { $false } } }
     )
     $allOk = $true
     foreach ($c in $checks) {
@@ -488,13 +641,14 @@ function Verify-Install {
 }
 
 function Show-Success {
-    param([string]$ClaudeHome)
+    param([string]$ClaudeHome, [string]$CodexHome)
     Write-Host ''
     Write-Host '+============================================================+' -ForegroundColor Green
     Write-Host '|             INSTALLATION COMPLETE!                         |' -ForegroundColor Green
     Write-Host '+============================================================+' -ForegroundColor Green
     Write-Host ''
     Write-Host "  Claude Code config installed at: $ClaudeHome" -ForegroundColor White
+    Write-Host "  Claude Code Codex Strongest config installed at: $CodexHome" -ForegroundColor White
     Write-Host '  8 MCP servers configured in ~/.claude.json' -ForegroundColor White
     Write-Host ''
     Write-Host '  IMPORTANT - set up your API key in cc-switch first:' -ForegroundColor Yellow
@@ -507,7 +661,11 @@ function Show-Success {
     Write-Host '    - VS Code: Ctrl+Shift+P -> "Claude Code: Open Chat"' -ForegroundColor White
     Write-Host '    - Terminal: claude' -ForegroundColor White
     Write-Host ''
-    Write-Host '  Documentation: https://github.com/liujiarui0918/claude-code-strongest' -ForegroundColor Cyan
+    Write-Host '  Optional Codex setup:' -ForegroundColor Yellow
+    Write-Host '    - Terminal: codex login' -ForegroundColor White
+    Write-Host '    - VS Code: open the Codex extension (openai.chatgpt)' -ForegroundColor White
+    Write-Host ''
+    Write-Host '  Documentation: https://github.com/liujiarui0918/claude-code-codex-strongest' -ForegroundColor Cyan
     Write-Host ''
 }
 
@@ -523,7 +681,11 @@ try {
     if (-not $ClaudeHome) {
         $ClaudeHome = Join-Path $env:USERPROFILE '.claude'
     }
+    if (-not $CodexHome) {
+        $CodexHome = Join-Path $env:USERPROFILE '.codex'
+    }
     Write-Info "Install target: $ClaudeHome"
+    Write-Info "Codex target: $CodexHome"
     if ($Reset) { Write-Info 'Mode: RESET (clean reinstall)' }
     Write-Host ''
 
@@ -566,14 +728,15 @@ try {
     Render-Settings -TemplatePath $tplPath -OutPath $outPath -TokenEmpty $tokenEmpty -UrlEmpty $urlEmpty -ModelEmpty $modelEmpty -Values $vals
 
     Deploy-MCP -RepoRoot $repoRoot -Timezone $Timezone
+    Deploy-CodexConfig -RepoRoot $repoRoot -CodexHome $CodexHome
 
-    Verify-Install -ClaudeHome $ClaudeHome
+    Verify-Install -ClaudeHome $ClaudeHome -CodexHome $CodexHome
 
     if (-not $NoCcSwitch -and -not $NonInteractive) {
         Open-CcSwitch | Out-Null
     }
 
-    Show-Success -ClaudeHome $ClaudeHome
+    Show-Success -ClaudeHome $ClaudeHome -CodexHome $CodexHome
     exit 0
 } catch {
     Write-Host ''
@@ -585,6 +748,6 @@ try {
     Write-Host '    - Check VPN if downloads time out' -ForegroundColor White
     Write-Host '    - Re-run with -SkipPrereqs if tools are already installed' -ForegroundColor White
     Write-Host '    - Try a clean slate: re-run with -Reset' -ForegroundColor White
-    Write-Host '    - See: https://github.com/liujiarui0918/claude-code-strongest/issues' -ForegroundColor White
+    Write-Host '    - See: https://github.com/liujiarui0918/claude-code-codex-strongest/issues' -ForegroundColor White
     exit 1
 }
